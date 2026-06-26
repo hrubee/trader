@@ -50,9 +50,13 @@ closed trade it runs a retrospective and refines one rule. `brain/PLAYBOOK.seed.
 The wrapper calls whatever agent CLI you set:
 
 ```bash
-BRAIN_CLI=claude BRAIN_MODEL=claude-sonnet-4-6 bash vps_brain_run.sh   # default
-BRAIN_CLI=hermes bash vps_brain_run.sh                                  # any `-p "<prompt>"` agent
+BRAIN_CLI=claude BRAIN_MODEL=claude-sonnet-4-6 bash vps_brain_run.sh    # default (claude: -p / --model)
+BRAIN_CLI=hermes BRAIN_MODEL= bash vps_brain_run.sh                     # hermes: --yolo -z (-m if set); leave
+                                                                       # BRAIN_MODEL empty to use hermes' own default
+# optional for hermes: BRAIN_TOOLSETS=shell,files  (defaults are usually fine)
 ```
+
+The wrapper auto-detects the CLI flavor by name (`hermes*` → `--yolo -z`/`-m`; otherwise claude-style `-p`/`--model`).
 
 ## Safety
 
