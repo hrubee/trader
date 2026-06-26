@@ -998,7 +998,7 @@ def main():
     s.add_argument("--losers", action="store_true"); s.set_defaults(fn=cmd_gainers)
 
     s = sub.add_parser("volspike"); s.add_argument("--tf", default="15m"); s.add_argument("--top", type=int, default=15)
-    s.add_argument("--spike-tf", dest="spike_tf", default="1m"); s.add_argument("--spike-lookback", dest="spike_lookback", type=int, default=40)
+    s.add_argument("--spike-tf", dest="spike_tf", default="1m"); s.add_argument("--spike-lookback", dest="spike_lookback", type=int, default=120)
     s.add_argument("--lookback", type=int, default=250); s.add_argument("--min-vol", dest="min_vol", type=float, default=5e6)
     s.add_argument("--max-scan", dest="max_scan", type=int, default=400); s.set_defaults(fn=cmd_volspike)
 
