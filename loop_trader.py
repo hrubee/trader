@@ -434,6 +434,44 @@ def cmd_scan(args):
          "n": len(snaps), "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps})
 
 
+def cmd_gainers(args):
+    """The day's biggest MOVERS: top-N crypto USDT-perps ranked by 24h % change (use --losers for the
+    bottom). Same per-coin snapshot as `scan` PLUS pct_24h, so you can hunt early-momentum breakouts on
+    coins that are actually running today. min_vol keeps it liquid (no illiquid micro-cap junk)."""
+    mkt = market_client()
+    tick = mkt.fetch_tickers()
+    cand = []
+    for sym, t in tick.items():
+        if not sym.endswith(INST_SUFFIX):
+            continue
+        m = mkt.markets.get(sym) or {}
+        if (m.get("info", {}) or {}).get("underlyingType") not in (None, "COIN"):
+            continue
+        qv = float(t.get("quoteVolume") or 0)
+        pct = t.get("percentage")
+        if qv >= args.min_vol and pct is not None:
+            cand.append((float(pct), qv, sym.split("/")[0]))
+    cand.sort(reverse=not args.losers)                 # gainers: % desc; losers: % asc
+    sel = cand[:args.top]
+    pctmap = {b: p for p, _, b in cand}
+    bases = [b for _, _, b in sel]
+    rows = {}
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        for b, k in zip(bases, ex.map(lambda b: klines(mkt, b, args.tf, args.lookback), bases)):
+            if k:
+                rows[b] = k
+    snaps = []
+    for b, k in rows.items():
+        s = snapshot(b, k)
+        p = pctmap.get(b)
+        s["pct_24h"] = round(p, 2) if p is not None else None
+        snaps.append(s)
+    snaps.sort(key=lambda s: (s.get("pct_24h") if s.get("pct_24h") is not None else 0), reverse=not args.losers)
+    out({"mode": "testnet" if not args.live else "LIVE", "tf": args.tf, "ranked_by": ("24h_pct_loss" if args.losers else "24h_pct_gain"),
+         "data_source": "binance-mainnet", "n": len(snaps),
+         "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps})
+
+
 def cmd_price(args):
     mkt = market_client()
     b = args.symbol.upper().replace("/USDT:USDT", "").replace("USDT", "")
@@ -888,6 +926,10 @@ def main():
 
     s = sub.add_parser("scan"); s.add_argument("--tf", default="1h"); s.add_argument("--top", type=int, default=30)
     s.add_argument("--symbols", default=""); s.add_argument("--lookback", type=int, default=250); s.set_defaults(fn=cmd_scan)
+
+    s = sub.add_parser("gainers"); s.add_argument("--tf", default="1h"); s.add_argument("--top", type=int, default=20)
+    s.add_argument("--lookback", type=int, default=250); s.add_argument("--min-vol", dest="min_vol", type=float, default=1e7)
+    s.add_argument("--losers", action="store_true"); s.set_defaults(fn=cmd_gainers)
 
     s = sub.add_parser("price"); s.add_argument("symbol"); s.add_argument("--tf", default="1h"); s.add_argument("--n", type=int, default=60); s.set_defaults(fn=cmd_price)
 
