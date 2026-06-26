@@ -477,12 +477,24 @@ def cmd_gainers(args):
          "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps})
 
 
+def _spike_ratio(k):
+    """Last CLOSED bar volume / its prior-20-bar average. None if not enough bars."""
+    if not k:
+        return None
+    _, _, _, _, c, v = k
+    cb = len(c) - 2
+    if cb < 21:
+        return None
+    avg = sum(v[cb - 20:cb]) / 20.0
+    return (v[cb] / avg) if avg else None
+
+
 def cmd_volspike(args):
-    """MARKET-WIDE volume-spike scanner: checks EVERY liquid USDT-perp (not just the top-N), computes each
-    coin's current-bar vol_ratio (volume vs its 20-bar average), and returns the biggest SPIKES ranked
-    desc — your primary hunting ground for 'where did volume just surge across the whole market'. Each row
-    has the full snapshot (price, atr, trend, di, vol_ratio, last5_ohlc) so you can bet the surge bar's
-    direction. min_vol keeps it real (excludes illiquid junk whose 'spikes' are noise on tiny size)."""
+    """MARKET-WIDE volume-spike scanner, DUAL-TIMEFRAME: detects the spike on a FAST tf (--spike-tf, default
+    1m) across EVERY liquid USDT-perp, then for the biggest spikers returns the TRADE-tf snapshot (--tf,
+    default 15m: price, atr, trend, di, last5_ohlc) so you decide DIRECTION + place the bracket off the 15m
+    chart. Each row's `spike_vol_ratio` is the 1m surge (the trigger); the rest is 15m context. min_vol
+    excludes illiquid junk whose 'spikes' are noise on tiny size."""
     mkt = market_client()
     tick = mkt.fetch_tickers()
     cand = []
@@ -497,17 +509,33 @@ def cmd_volspike(args):
             cand.append((qv, sym.split("/")[0]))
     cand.sort(reverse=True)
     bases = [b for _, b in cand[:args.max_scan]]        # whole liquid market (safety-capped)
-    rows = {}
+    # Phase A — detect spike on the FAST tf (1m) across the whole market
+    spikes = {}
     with ThreadPoolExecutor(max_workers=24) as ex:
-        for b, k in zip(bases, ex.map(lambda b: klines(mkt, b, args.tf, args.lookback), bases)):
+        for b, k in zip(bases, ex.map(lambda b: klines(mkt, b, args.spike_tf, args.spike_lookback), bases)):
+            r = _spike_ratio(k)
+            if r is not None:
+                spikes[b] = r
+    ranked = sorted(spikes, key=spikes.get, reverse=True)[:args.top]
+    # Phase B — TRADE-tf (15m) context only for the top spikers
+    rows = {}
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        for b, k in zip(ranked, ex.map(lambda b: klines(mkt, b, args.tf, args.lookback), ranked)):
             if k:
                 rows[b] = k
-    snaps = [snapshot(b, k) for b, k in rows.items()]
-    snaps = [s for s in snaps if s.get("vol_ratio") is not None]
-    snaps.sort(key=lambda s: s["vol_ratio"], reverse=True)
-    out({"mode": "testnet" if not args.live else "LIVE", "tf": args.tf, "ranked_by": "vol_ratio(market-wide surge)",
-         "data_source": "binance-mainnet", "scanned": len(snaps), "n": min(args.top, len(snaps)),
-         "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps[:args.top]})
+    coins = []
+    for b in ranked:
+        if b not in rows:
+            continue
+        s = snapshot(b, rows[b])
+        s["spike_vol_ratio"] = round(spikes[b], 2)      # the 1m trigger
+        s["spike_tf"] = args.spike_tf
+        coins.append(s)
+    coins.sort(key=lambda s: s.get("spike_vol_ratio") or 0, reverse=True)
+    out({"mode": "testnet" if not args.live else "LIVE", "spike_tf": args.spike_tf, "trade_tf": args.tf,
+         "ranked_by": "spike_vol_ratio@" + args.spike_tf, "data_source": "binance-mainnet",
+         "scanned": len(spikes), "n": len(coins),
+         "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": coins})
 
 
 def cmd_price(args):
@@ -970,6 +998,7 @@ def main():
     s.add_argument("--losers", action="store_true"); s.set_defaults(fn=cmd_gainers)
 
     s = sub.add_parser("volspike"); s.add_argument("--tf", default="15m"); s.add_argument("--top", type=int, default=15)
+    s.add_argument("--spike-tf", dest="spike_tf", default="1m"); s.add_argument("--spike-lookback", dest="spike_lookback", type=int, default=40)
     s.add_argument("--lookback", type=int, default=250); s.add_argument("--min-vol", dest="min_vol", type=float, default=5e6)
     s.add_argument("--max-scan", dest="max_scan", type=int, default=400); s.set_defaults(fn=cmd_volspike)
 
