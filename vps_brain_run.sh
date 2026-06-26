@@ -46,6 +46,18 @@ flock -n 9 || { echo "$(date -u +%FT%TZ) SKIP — prior brain iteration still ru
 echo "==== $(date -u +%FT%TZ) BRAIN iteration START ($BRAIN_CLI / $BRAIN_MODEL) ====" >> "$LOG"
 rm -f "$DEC"                                           # never execute a stale decision set
 
+# PHASE 0 (deterministic, NO AI): compute the volume-spike candidate list FOR the brain.
+# The AI no longer scans — it READS this list and decides which (if any) to trade.
+SPIKES="$BRAIN/spikes.json"; SPIKES_PREV="$BRAIN/spikes_prev.json"
+[ -f "$SPIKES" ] && cp -f "$SPIKES" "$SPIKES_PREV"     # keep prior run's list for cross-iteration confirmation
+if vs_out="$(LOOP_TRADER_DATADIR="$REPO/loop_trader_data" timeout 180 "$PY" "$REPO/loop_trader.py" volspike --spike-tf 15m --top 20 --min-spike 3 2>>"$LOG")" && [ -n "$vs_out" ]; then
+  printf '%s\n' "$vs_out" > "$SPIKES"
+  echo "$(date -u +%FT%TZ) volspike list computed ($(printf '%s' "$vs_out" | grep -o '\"n\":[0-9]*' | head -1))" >> "$LOG"
+else
+  echo "$(date -u +%FT%TZ) volspike scan FAILED — empty candidate list this run" >> "$LOG"
+  echo '{"coins":[],"n":0,"error":"scan failed"}' > "$SPIKES"
+fi
+
 rc=0
 for attempt in 1 2; do
   out="$(run_agent)"; rc=$?
