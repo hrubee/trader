@@ -1019,9 +1019,9 @@ def main():
     s.add_argument("--losers", action="store_true"); s.set_defaults(fn=cmd_gainers)
 
     s = sub.add_parser("volspike"); s.add_argument("--tf", default="15m"); s.add_argument("--top", type=int, default=15)
-    s.add_argument("--spike-tf", dest="spike_tf", default="1m"); s.add_argument("--spike-lookback", dest="spike_lookback", type=int, default=150)
-    s.add_argument("--min-spike", dest="min_spike", type=float, default=30.0)   # only show spikes >= this (30x)
-    s.add_argument("--avg-bars", dest="avg_bars", type=int, default=60)        # baseline = avg of last 60 1m candles (60 min)
+    s.add_argument("--spike-tf", dest="spike_tf", default="15m"); s.add_argument("--spike-lookback", dest="spike_lookback", type=int, default=150)
+    s.add_argument("--min-spike", dest="min_spike", type=float, default=10.0)   # 10x is the viable band on 15m (backtest)
+    s.add_argument("--avg-bars", dest="avg_bars", type=int, default=20)        # baseline = avg of last 20 15m candles (~5h)
     s.add_argument("--lookback", type=int, default=250); s.add_argument("--min-vol", dest="min_vol", type=float, default=5e6)
     s.add_argument("--max-scan", dest="max_scan", type=int, default=400); s.set_defaults(fn=cmd_volspike)
 
