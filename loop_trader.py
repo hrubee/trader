@@ -969,6 +969,7 @@ def cmd_execute_decisions(args):
                     ok, o = run(["close", "--symbol", sym, "--reason", (m.get("reason") or "brain close")[:160]], to=90)
                     acts.append({"close": sym, "ok": ok})
         gmin = GRADE.get(str(a.get("min_grade", "B")).upper(), 2)
+        max_pos = int(a.get("max_positions", 4))         # cap concurrent positions (aggregate-risk guard)
         for e in entries:
             sym = _b(e.get("symbol", ""))
             g = GRADE.get(str(e.get("grade") or "B").upper(), 2)
@@ -980,8 +981,11 @@ def cmd_execute_decisions(args):
             if g < gmin:
                 acts.append({"skip": sym, "why": "grade %s < min %s" % (e.get("grade"), a.get("min_grade"))})
                 continue
-            if sym in held:
-                acts.append({"skip": sym, "why": "already held"})
+            if sym in held:                              # de-dup: never stack a 2nd position on a coin (incl. same-run dup)
+                acts.append({"skip": sym, "why": "already held / dup"})
+                continue
+            if len(held) >= max_pos:                     # concurrency cap -> bounds total account risk
+                acts.append({"skip": sym, "why": "max %d concurrent positions" % max_pos})
                 continue
             cmd = ["enter", "--symbol", sym, "--side", side, "--stop", str(stop),
                    "--risk-pct", str(a.get("risk_pct", 1.0)), "--leverage", str(a.get("leverage", 5)),
@@ -989,6 +993,8 @@ def cmd_execute_decisions(args):
             if tp not in (None, "", 0):
                 cmd += ["--tp", str(tp)]
             ok, o = run(cmd)
+            if ok:
+                held.add(sym)                            # count it + block any duplicate later in this run
             acts.append({"enter": sym, "side": side, "grade": e.get("grade"), "ok": ok, "out": o})
         report.append({"account": a.get("name"), "live": live, "actions": acts})
     if os.path.exists(args.decisions):                 # archive so a stale file can't re-execute next run
