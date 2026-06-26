@@ -430,7 +430,12 @@ def cmd_scan(args):
             if k:
                 rows[b] = k
     snaps = [snapshot(b, k) for b, k in rows.items()]
-    out({"mode": "testnet" if not args.live else "LIVE", "tf": args.tf, "data_source": "binance-mainnet",
+    ranked_by = "volume_universe"
+    if getattr(args, "sort", "") == "vol":            # VOLUME-SURGE first: rank by current-bar vol_ratio desc
+        snaps.sort(key=lambda s: (s.get("vol_ratio") if s.get("vol_ratio") is not None else 0), reverse=True)
+        ranked_by = "vol_ratio(surge)"
+    out({"mode": "testnet" if not args.live else "LIVE", "tf": args.tf, "ranked_by": ranked_by,
+         "data_source": "binance-mainnet",
          "n": len(snaps), "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps})
 
 
@@ -925,7 +930,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd")
 
     s = sub.add_parser("scan"); s.add_argument("--tf", default="1h"); s.add_argument("--top", type=int, default=30)
-    s.add_argument("--symbols", default=""); s.add_argument("--lookback", type=int, default=250); s.set_defaults(fn=cmd_scan)
+    s.add_argument("--symbols", default=""); s.add_argument("--lookback", type=int, default=250); s.add_argument("--sort", default="", choices=["", "vol"]); s.set_defaults(fn=cmd_scan)
 
     s = sub.add_parser("gainers"); s.add_argument("--tf", default="1h"); s.add_argument("--top", type=int, default=20)
     s.add_argument("--lookback", type=int, default=250); s.add_argument("--min-vol", dest="min_vol", type=float, default=1e7)
