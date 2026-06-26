@@ -477,15 +477,16 @@ def cmd_gainers(args):
          "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps})
 
 
-def _spike_info(k):
-    """Last CLOSED bar: vol-ratio vs prior-20-bar avg + that bar's OHLC. None if not enough bars."""
+def _spike_info(k, win=60):
+    """Last CLOSED bar: vol-ratio vs the average of the prior `win` bars (default 60 = last 60 min on 1m)
+    + that bar's OHLC. None if not enough bars."""
     if not k:
         return None
     _, o, h, l, c, v = k
     cb = len(c) - 2
-    if cb < 21:
+    if cb < win + 1:
         return None
-    avg = sum(v[cb - 20:cb]) / 20.0
+    avg = sum(v[cb - win:cb]) / float(win)
     if not avg:
         return None
     return {"vr": v[cb] / avg, "o": float(o[cb]), "h": float(h[cb]), "l": float(l[cb]), "c": float(c[cb])}
@@ -519,7 +520,7 @@ def cmd_volspike(args):
     info = {}
     with ThreadPoolExecutor(max_workers=24) as ex:
         for b, k in zip(bases, ex.map(lambda b: klines(mkt, b, args.spike_tf, args.spike_lookback), bases)):
-            d = _spike_info(k)
+            d = _spike_info(k, args.avg_bars)
             if d is not None and d["vr"] >= args.min_spike:
                 info[b] = d
     ranked = sorted(info, key=lambda b: info[b]["vr"], reverse=True)[:args.top]
@@ -1012,8 +1013,9 @@ def main():
     s.add_argument("--losers", action="store_true"); s.set_defaults(fn=cmd_gainers)
 
     s = sub.add_parser("volspike"); s.add_argument("--tf", default="15m"); s.add_argument("--top", type=int, default=15)
-    s.add_argument("--spike-tf", dest="spike_tf", default="1m"); s.add_argument("--spike-lookback", dest="spike_lookback", type=int, default=120)
-    s.add_argument("--min-spike", dest="min_spike", type=float, default=10.0)   # only show spikes >= this (rule #2: 10x)
+    s.add_argument("--spike-tf", dest="spike_tf", default="1m"); s.add_argument("--spike-lookback", dest="spike_lookback", type=int, default=150)
+    s.add_argument("--min-spike", dest="min_spike", type=float, default=30.0)   # only show spikes >= this (30x)
+    s.add_argument("--avg-bars", dest="avg_bars", type=int, default=60)        # baseline = avg of last 60 1m candles (60 min)
     s.add_argument("--lookback", type=int, default=250); s.add_argument("--min-vol", dest="min_vol", type=float, default=5e6)
     s.add_argument("--max-scan", dest="max_scan", type=int, default=400); s.set_defaults(fn=cmd_volspike)
 
