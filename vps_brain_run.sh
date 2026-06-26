@@ -30,12 +30,12 @@ run_agent() {                                          # PHASE 1: emit decisions
   local prompt; prompt="$(cat "$PROMPT_FILE")"
   case "$(basename "$BRAIN_CLI")" in
     hermes*)   # Hermes: one-shot (-z), model (-m), --yolo bypasses approval for headless tool-use.
-      timeout 600 "$BRAIN_CLI" --yolo ${BRAIN_MODEL:+-m "$BRAIN_MODEL"} ${BRAIN_TOOLSETS:+-t "$BRAIN_TOOLSETS"} -z "$prompt" 2>&1 ;;
+      timeout 900 "$BRAIN_CLI" --yolo ${BRAIN_MODEL:+-m "$BRAIN_MODEL"} ${BRAIN_TOOLSETS:+-t "$BRAIN_TOOLSETS"} -z "$prompt" 2>&1 ;;
     *)         # Claude Code (default): -p prompt, --model when supported.
       if [ -n "$BRAIN_MODEL" ] && "$BRAIN_CLI" --help 2>&1 | grep -q -- "--model"; then
-        timeout 600 "$BRAIN_CLI" --model "$BRAIN_MODEL" -p "$prompt" 2>&1
+        timeout 900 "$BRAIN_CLI" --model "$BRAIN_MODEL" -p "$prompt" 2>&1
       else
-        timeout 600 "$BRAIN_CLI" -p "$prompt" 2>&1
+        timeout 900 "$BRAIN_CLI" -p "$prompt" 2>&1
       fi ;;
   esac
 }
