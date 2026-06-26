@@ -46,10 +46,22 @@ flock -n 9 || { echo "$(date -u +%FT%TZ) SKIP — prior brain iteration still ru
 echo "==== $(date -u +%FT%TZ) BRAIN iteration START ($BRAIN_CLI / $BRAIN_MODEL) ====" >> "$LOG"
 rm -f "$DEC"                                           # never execute a stale decision set
 
-# PHASE 0 (deterministic, NO AI): compute the volume-spike candidate list FOR the brain.
-# The AI no longer scans — it READS this list and decides which (if any) to trade.
+# PHASE 0 (deterministic, NO AI): PREPARE ALL DECISION INPUTS for the brain, then feed them in.
+# The AI does NOT fetch anything itself — it only reads these prepared files and judges.
+ACCT_CTX="$BRAIN/account.json"
 SPIKES="$BRAIN/spikes.json"; SPIKES_PREV="$BRAIN/spikes_prev.json"
-[ -f "$SPIKES" ] && cp -f "$SPIKES" "$SPIKES_PREV"     # keep prior run's list for cross-iteration confirmation
+
+# (a) ACCOUNT/WALLET + LIVE EXCHANGE POSITIONS (ground truth, master/demo account).
+if ac_out="$(LOOP_TRADER_DATADIR="$REPO/loop_trader_data" timeout 120 "$PY" "$REPO/loop_trader.py" state 2>>"$LOG")" && [ -n "$ac_out" ]; then
+  printf '%s\n' "$ac_out" > "$ACCT_CTX"
+  echo "$(date -u +%FT%TZ) account prepared ($(printf '%s' "$ac_out" | grep -o '\"n_positions\":[0-9]*' | head -1); $(printf '%s' "$ac_out" | grep -o '\"total\":[0-9.]*' | head -1))" >> "$LOG"
+else
+  echo "$(date -u +%FT%TZ) account fetch FAILED — writing error context" >> "$LOG"
+  echo '{"error":"account fetch failed","wallet":null,"positions":[],"n_positions":0}' > "$ACCT_CTX"
+fi
+
+# (b) VOLUME-SPIKE CANDIDATE LIST (prior run's list kept for cross-iteration confirmation).
+[ -f "$SPIKES" ] && cp -f "$SPIKES" "$SPIKES_PREV"
 if vs_out="$(LOOP_TRADER_DATADIR="$REPO/loop_trader_data" timeout 180 "$PY" "$REPO/loop_trader.py" volspike --spike-tf 15m --top 20 --min-spike 3 2>>"$LOG")" && [ -n "$vs_out" ]; then
   printf '%s\n' "$vs_out" > "$SPIKES"
   echo "$(date -u +%FT%TZ) volspike list computed ($(printf '%s' "$vs_out" | grep -o '\"n\":[0-9]*' | head -1))" >> "$LOG"

@@ -32,10 +32,11 @@ MASTER ACCOUNT (the only one you inspect) = DEMO/testnet. Command prefix:
     LOOP_TRADER_DATADIR={{REPO}}/loop_trader_data ./.venv/bin/python3 loop_trader.py <cmd>
 Discover your full toolkit yourself: `./.venv/bin/python3 loop_trader.py --help` (and `<cmd> --help`). Available data/analysis commands include market scans, OHLC/indicator pulls, account `state`, trade `journal`, and `review` (net-of-fee outcomes).
 
-YOUR VOLUME-SPIKE LIST IS ALREADY COMPUTED FOR YOU — do NOT run any scan yourself. Before each run the system writes the current list of coins with volume spikes to:
+ALL THE DATA YOU NEED IS ALREADY PREPARED AND FED TO YOU — do NOT fetch, scan, or query anything yourself. Before each run a deterministic step writes these files; READ them, do not regenerate them:
+   • ACCOUNT (wallet + live positions, exchange ground truth): {{REPO}}/loop_trader_data_brain/account.json — has `wallet{total,free,used}`, `positions[]` (each open position with its stops/tps), `n_positions`. This is the TRUTH about what you hold and your balance. Do NOT run `state`/balance — use this file.
    • CURRENT spikes:  {{REPO}}/loop_trader_data_brain/spikes.json   (this run's spikers; each coin has spike_vol_ratio, spike_dir, side, entry_ref, stop, tp)
    • PREVIOUS spikes: {{REPO}}/loop_trader_data_brain/spikes_prev.json  (the prior run's list — for confirmation)
-READ both files. Do NOT call volspike or any market scan — your candidates are exactly the coins in spikes.json. (`coins` array; if empty, there are no spikes this run.)
+Do NOT call volspike or any market scan — your candidates are exactly the coins in spikes.json (`coins` array; if empty, no spikes this run). Base every hold/close decision on account.json's `positions[]`.
 
 YOUR JOB = decide which (if any) of those spiking coins to TRADE, and skip the rest. This is a judgment task, not a scan task. How to judge:
    • CONFIRMATION across iterations is the strongest tell: a coin in spikes.json that was ALSO in spikes_prev.json in the SAME direction = a persistent spike (volume holding + move following through) → high-quality entry. Prefer confirmed/persistent spikes over ones appearing for the first time.
@@ -52,8 +53,8 @@ You are accountable to one thing only: net-of-fee equity growth on the master ac
 EACH RUN:
 1. LEARN: read PLAYBOOK.md, obey your own rules; `journal` recent trades.
 2. SELF-IMPROVE: if anything closed, `review` → edit PLAYBOOK (and tune brain_accounts.json if warranted).
-3. READ THE SPIKE LIST: open spikes.json (+ spikes_prev.json) — these ARE your candidates; do NOT scan. Decide which spiking coins are worth trading (confirmed/persistent > first-seen; clear direction; not parabolic). Optional: a quick price/indicator pull on a candidate is fine, but the candidate set is fixed by the list.
-4. INSPECT: `state` — see open positions (stops+tps) to decide holds vs closes.
+3. READ PREPARED DATA: open account.json (wallet + your open positions), spikes.json, and spikes_prev.json. Do NOT fetch/scan — everything you need is in these files.
+4. JUDGE: from account.json decide holds vs closes on what you already hold; from spikes.json (cross-checked against spikes_prev.json for confirmation) decide which spiking coins to ENTER (confirmed/persistent > first-seen; clear direction; not parabolic).
 5. EMIT: write decisions.json (shape above), then a 1–2 line summary. Done.
 
 The executor then, per account: reconciles (orphan-stop sweep), closes managed symbols it holds, and opens each new entry — sized by that account's risk_pct, gated by its min_grade, fully bracketed. You decide; it executes. One pass, then exit.
