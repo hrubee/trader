@@ -80,6 +80,12 @@ for attempt in 1 2; do
   break
 done
 
+if [ ! -s "$DEC" ]; then                               # SALVAGE: AI printed the JSON but forgot to write the file
+  if printf '%s' "$out" | "$PY" "$REPO/salvage_decisions.py" "$DEC" >> "$LOG" 2>&1 && [ -s "$DEC" ]; then
+    echo "$(date -u +%FT%TZ) salvaged decisions.json from agent stdout (AI printed instead of writing)" >> "$LOG"
+  fi
+fi
+
 if [ -s "$DEC" ]; then                                 # PHASE 2: deterministic, no AI
   echo "---- $(date -u +%FT%TZ) executing decisions across accounts ----" >> "$LOG"
   "$PY" "$REPO/loop_trader.py" execute-decisions --decisions "$DEC" --accounts "$ACCTS" >> "$LOG" 2>&1
