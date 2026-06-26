@@ -25,6 +25,7 @@ STEPS:
    }
    RULES for the JSON:
    - stop/tp are ABSOLUTE PRICES (same market for every account); do NOT include size/risk — the executor sizes per account.
+   - ⚠️ BRACKET GEOMETRY — get this EXACTLY right or the executor REJECTS the trade (no fill): use the coin's CURRENT price (the `price` field from gainers/scan). For a LONG: stop is BELOW price (invalidation), tp is ABOVE price (target). For a SHORT: stop is ABOVE price (invalidation), tp is BELOW price (target). Stop distance ≈ 1–2× the coin's ATR (`atr` field); tp distance ≈ 1.5–3× the stop distance (so net R:R ≥1.5:1) — NOT some far-off round number. SELF-CHECK before writing each entry: SHORT must satisfy tp < price < stop; LONG must satisfy stop < price < tp. If it doesn't, your numbers are wrong — fix them.
    - grade = conviction: "A" = rule-perfect, highest-conviction (mirrors to the real-money LIVE account too); "B" = decent/experimental (demo-only). Be honest — a real account copies your A grades.
    - Include entries that clear your playbook with net R:R ≥1.5:1. In FULL-ACTION mode, lean HARD toward action to hit the +1%/day floor — propose MULTIPLE entries when several qualify, and prefer taking a decent setup over sitting idle. Only output empty entries:[] when the tape genuinely offers nothing tradeable; never force a NAKED or un-bracketed trade, but do not pass up real movers out of excess caution.
    - Respect MAX-2-per-coin/direction and the concentration ban (don't stack the same directional bet — but several UNCORRELATED movers is good).
