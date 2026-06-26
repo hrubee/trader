@@ -623,10 +623,25 @@ def cmd_enter(args):
     notional = risk_usd / stop_frac
     notional = min(notional, args.leverage * wallet)        # leverage cap
     qty = notional / px
-    try:                                                    # cap to the symbol's max order qty (avoid -4005)
-        mx = (((ex.market(sym) or {}).get("limits") or {}).get("amount") or {}).get("max")
-        if mx and qty > float(mx):
-            qty = float(mx) * 0.98
+    # cap to the symbol's max ORDER qty to avoid -4005 "Quantity greater than max quantity".
+    # Binance has TWO maxima: LOT_SIZE.maxQty (limit orders; = ccxt limits.amount.max) AND
+    # MARKET_LOT_SIZE.maxQty (MARKET orders, usually SMALLER). A market entry must respect the smaller of
+    # the two, but ccxt only surfaces LOT_SIZE — so read the raw filters and cap to the min of all maxima.
+    try:
+        m = ex.market(sym) or {}
+        caps = []
+        _lim = (((m.get("limits") or {}).get("amount") or {}).get("max"))
+        if _lim:
+            caps.append(float(_lim))
+        for _fl in ((m.get("info") or {}).get("filters") or []):
+            if _fl.get("filterType") in ("MARKET_LOT_SIZE", "LOT_SIZE"):
+                _mq = _fl.get("maxQty")
+                if _mq and float(_mq) > 0:
+                    caps.append(float(_mq))
+        if caps:
+            _cap = min(caps) * 0.97                          # 0.97 headroom for precision rounding
+            if qty > _cap:
+                qty = _cap
     except Exception:
         pass
     qty = float(ex.amount_to_precision(sym, qty))
