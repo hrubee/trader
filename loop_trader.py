@@ -504,9 +504,12 @@ def cmd_volspike(args):
         m = mkt.markets.get(sym) or {}
         if (m.get("info", {}) or {}).get("underlyingType") not in (None, "COIN"):
             continue
+        b = sym.split("/")[0]
+        if not b.isascii():                              # drop CJK/exotic-named listings (model can't reference them; BadSymbol)
+            continue
         qv = float(t.get("quoteVolume") or 0)
         if qv >= args.min_vol:
-            cand.append((qv, sym.split("/")[0]))
+            cand.append((qv, b))
     cand.sort(reverse=True)
     bases = [b for _, b in cand[:args.max_scan]]        # whole liquid market (safety-capped)
     # Phase A — detect spike on the FAST tf (1m) across the whole market
@@ -599,7 +602,14 @@ def cmd_enter(args):
     risk_usd = args.risk_pct / 100.0 * wallet
     notional = risk_usd / stop_frac
     notional = min(notional, args.leverage * wallet)        # leverage cap
-    qty = float(ex.amount_to_precision(sym, notional / px))
+    qty = notional / px
+    try:                                                    # cap to the symbol's max order qty (avoid -4005)
+        mx = (((ex.market(sym) or {}).get("limits") or {}).get("amount") or {}).get("max")
+        if mx and qty > float(mx):
+            qty = float(mx) * 0.98
+    except Exception:
+        pass
+    qty = float(ex.amount_to_precision(sym, qty))
     stop_px = float(ex.price_to_precision(sym, stop))
     tp_px = float(ex.price_to_precision(sym, args.tp)) if args.tp else None
     plan = {"symbol": sym, "side": args.side, "ref_px": rnd(px), "stop": rnd(stop_px), "tp": rnd(tp_px),
