@@ -969,7 +969,7 @@ def cmd_execute_decisions(args):
                     ok, o = run(["close", "--symbol", sym, "--reason", (m.get("reason") or "brain close")[:160]], to=90)
                     acts.append({"close": sym, "ok": ok})
         gmin = GRADE.get(str(a.get("min_grade", "B")).upper(), 2)
-        max_pos = int(a.get("max_positions", 4))         # cap concurrent positions (aggregate-risk guard)
+        max_pos = a.get("max_positions")                 # optional concurrency cap; None/absent = UNLIMITED
         for e in entries:
             sym = _b(e.get("symbol", ""))
             g = GRADE.get(str(e.get("grade") or "B").upper(), 2)
@@ -984,8 +984,8 @@ def cmd_execute_decisions(args):
             if sym in held:                              # de-dup: never stack a 2nd position on a coin (incl. same-run dup)
                 acts.append({"skip": sym, "why": "already held / dup"})
                 continue
-            if len(held) >= max_pos:                     # concurrency cap -> bounds total account risk
-                acts.append({"skip": sym, "why": "max %d concurrent positions" % max_pos})
+            if max_pos is not None and len(held) >= int(max_pos):   # cap only if explicitly configured (default: unlimited)
+                acts.append({"skip": sym, "why": "max %s concurrent positions" % max_pos})
                 continue
             cmd = ["enter", "--symbol", sym, "--side", side, "--stop", str(stop),
                    "--risk-pct", str(a.get("risk_pct", 1.0)), "--leverage", str(a.get("leverage", 5)),
