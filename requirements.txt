@@ -1,0 +1,4 @@
+ccxt>=4.0
+numpy
+pandas
+python-dotenv

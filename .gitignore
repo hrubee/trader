@@ -1,0 +1,12 @@
+# secrets
+.env
+# per-VPS live state (each machine keeps its own ledgers/journal/playbook/logs)
+/loop_trader_data/
+/loop_trader_data_live/
+/loop_trader_data_brain/
+decisions.json
+decisions.json.last
+# python
+.venv/
+__pycache__/
+*.pyc

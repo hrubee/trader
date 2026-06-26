@@ -1,0 +1,25 @@
+{
+  "_comment": "Accounts the brain executes on. The AI analyzes the MASTER (first, active) account + market once and emits decisions; every account here mirrors them programmatically, sized by its own risk_pct and gated by min_grade. To add an account: append a block (datadir must be a fresh dir for ledger isolation). min_grade: A=only highest-conviction, B=also medium. live=true requires real keys + arms LOOP_TRADER_ALLOW_LIVE.",
+  "accounts": [
+    {
+      "name": "demo",
+      "datadir": "{{REPO}}/loop_trader_data",
+      "live": false,
+      "risk_pct": 1.0,
+      "leverage": 5,
+      "min_grade": "B",
+      "master": true,
+      "enabled": true
+    },
+    {
+      "name": "live",
+      "datadir": "{{REPO}}/loop_trader_data_live",
+      "live": true,
+      "risk_pct": 0.5,
+      "leverage": 5,
+      "min_grade": "B",
+      "master": false,
+      "enabled": true
+    }
+  ]
+}
