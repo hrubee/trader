@@ -946,6 +946,14 @@ def cmd_execute_decisions(args):
             dec = {}
     entries = dec.get("entries") or []
     manage = dec.get("manage") or []
+    # spike-direction guard: an entry's side MUST match the prepared spike candle's direction (never long a red spike)
+    spike_side = {}
+    try:
+        _spk = json.load(open(os.path.join(os.path.dirname(os.path.abspath(args.decisions)), "spikes.json")))
+        for _c in _spk.get("coins", []):
+            spike_side[_b(str(_c.get("coin", "")))] = _c.get("side")
+    except Exception:
+        spike_side = {}
     self_path = os.path.abspath(__file__)
     report = []
     for a in accts:
@@ -990,6 +998,10 @@ def cmd_execute_decisions(args):
             stop = e.get("stop")
             tp = e.get("tp")
             if not sym or side not in ("long", "short") or stop in (None, "", 0):
+                continue
+            want = spike_side.get(sym)
+            if want and side != want:
+                acts.append({"skip": sym, "why": "side %s contradicts spike direction %s -- refusing to trade against the spike candle" % (side, want)})
                 continue
             if g < gmin:
                 acts.append({"skip": sym, "why": "grade %s < min %s" % (e.get("grade"), a.get("min_grade"))})

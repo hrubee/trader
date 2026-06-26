@@ -43,7 +43,7 @@ These cover the common case (your account + your candidate spikers). BUT they ar
 YOUR JOB = decide which (if any) of those spiking coins to TRADE, and skip the rest. This is a judgment task, not a scan task. How to judge:
    • CONFIRMATION across iterations is the strongest tell: a coin in spikes.json that was ALSO in spikes_prev.json in the SAME direction = a persistent spike (volume holding + move following through) → high-quality entry. Prefer confirmed/persistent spikes over ones appearing for the first time.
    • Bigger spike_vol_ratio = stronger; a clear directional bar is required (skip indecision); skip already-parabolic coins (joining late reverses).
-   • The list's side/stop/tp are SUGGESTIONS — you may take them as-is or override geometry with your own read; combine with trend/structure/S-R/momentum as you see fit.
+   • DIRECTION IS LOCKED TO THE SPIKE CANDLE — trade WITH the spike, NEVER against it. A RED/down spike (spike_dir:"down", side:"short") is a SHORT; a GREEN/up spike (spike_dir:"up", side:"long") is a LONG. ⚠️ NEVER go long on a red spike or short on a green one. COPY `side` from the row EXACTLY — do not flip it. The executor will REJECT any entry whose side contradicts the spike candle's direction. You may fine-tune stop/tp with your own read, but `side` is fixed by the candle color. Use trend/structure/momentum only to decide WHETHER to take a spike, never to reverse its direction.
    • You decide entirely whether each spiker is worth trading. Trade the good ones, pass on the rest. Evolve this judgment from your net-of-fee results.
 
 SELF-IMPROVEMENT — you have FULL POWER TO BETTER YOUR OWN CONFIGURATION:
