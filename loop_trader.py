@@ -477,24 +477,28 @@ def cmd_gainers(args):
          "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps})
 
 
-def _spike_ratio(k):
-    """Last CLOSED bar volume / its prior-20-bar average. None if not enough bars."""
+def _spike_info(k):
+    """Last CLOSED bar: vol-ratio vs prior-20-bar avg + that bar's OHLC. None if not enough bars."""
     if not k:
         return None
-    _, _, _, _, c, v = k
+    _, o, h, l, c, v = k
     cb = len(c) - 2
     if cb < 21:
         return None
     avg = sum(v[cb - 20:cb]) / 20.0
-    return (v[cb] / avg) if avg else None
+    if not avg:
+        return None
+    return {"vr": v[cb] / avg, "o": float(o[cb]), "h": float(h[cb]), "l": float(l[cb]), "c": float(c[cb])}
 
 
 def cmd_volspike(args):
-    """MARKET-WIDE volume-spike scanner, DUAL-TIMEFRAME: detects the spike on a FAST tf (--spike-tf, default
-    1m) across EVERY liquid USDT-perp, then for the biggest spikers returns the TRADE-tf snapshot (--tf,
-    default 15m: price, atr, trend, di, last5_ohlc) so you decide DIRECTION + place the bracket off the 15m
-    chart. Each row's `spike_vol_ratio` is the 1m surge (the trigger); the rest is 15m context. min_vol
-    excludes illiquid junk whose 'spikes' are noise on tiny size."""
+    """MARKET-WIDE volume-spike scanner. Detects spikes on the FAST tf (--spike-tf, default 1m) across EVERY
+    liquid USDT-perp, and for the biggest spikes emits a READY-TO-TRADE row — side/stop/tp computed
+    deterministically so the agent just COPIES them (no arithmetic, no direction guessing):
+      side  = the spike candle's COLOR: green/up bar -> long ; red/down bar -> short
+      stop  = the spike candle's LOW (long) or HIGH (short)
+      tp    = 1:4 risk:reward from entry_ref off that stop
+    Only the agent's job: pick rows with spike_vol_ratio >= the threshold (10x) and pass side/stop/tp through."""
     mkt = market_client()
     tick = mkt.fetch_tickers()
     cand = []
@@ -512,32 +516,32 @@ def cmd_volspike(args):
             cand.append((qv, b))
     cand.sort(reverse=True)
     bases = [b for _, b in cand[:args.max_scan]]        # whole liquid market (safety-capped)
-    # Phase A — detect spike on the FAST tf (1m) across the whole market
-    spikes = {}
+    info = {}
     with ThreadPoolExecutor(max_workers=24) as ex:
         for b, k in zip(bases, ex.map(lambda b: klines(mkt, b, args.spike_tf, args.spike_lookback), bases)):
-            r = _spike_ratio(k)
-            if r is not None:
-                spikes[b] = r
-    ranked = sorted(spikes, key=spikes.get, reverse=True)[:args.top]
-    # Phase B — TRADE-tf (15m) context only for the top spikers
-    rows = {}
-    with ThreadPoolExecutor(max_workers=12) as ex:
-        for b, k in zip(ranked, ex.map(lambda b: klines(mkt, b, args.tf, args.lookback), ranked)):
-            if k:
-                rows[b] = k
+            d = _spike_info(k)
+            if d is not None and d["vr"] >= args.min_spike:
+                info[b] = d
+    ranked = sorted(info, key=lambda b: info[b]["vr"], reverse=True)[:args.top]
     coins = []
     for b in ranked:
-        if b not in rows:
+        d = info[b]
+        up = d["c"] >= d["o"]                            # green spike -> long ; red spike -> short
+        side = "long" if up else "short"
+        entry = d["c"]                                   # reference entry = spike candle close (~current)
+        stop = d["l"] if up else d["h"]                  # rule #3: stop at spike candle low/high
+        risk = abs(entry - stop)
+        if risk <= 0:
             continue
-        s = snapshot(b, rows[b])
-        s["spike_vol_ratio"] = round(spikes[b], 2)      # the 1m trigger
-        s["spike_tf"] = args.spike_tf
-        coins.append(s)
-    coins.sort(key=lambda s: s.get("spike_vol_ratio") or 0, reverse=True)
-    out({"mode": "testnet" if not args.live else "LIVE", "spike_tf": args.spike_tf, "trade_tf": args.tf,
-         "ranked_by": "spike_vol_ratio@" + args.spike_tf, "data_source": "binance-mainnet",
-         "scanned": len(spikes), "n": len(coins),
+        tp = entry + 4 * risk if up else entry - 4 * risk   # rule #4: 1:4 RR
+        coins.append({"coin": b, "spike_vol_ratio": round(d["vr"], 2), "spike_dir": "up" if up else "down",
+                      "side": side, "entry_ref": rnd(entry), "stop": rnd(stop), "tp": rnd(tp),
+                      "spike_high": rnd(d["h"]), "spike_low": rnd(d["l"]),
+                      "rr": "1:4", "spike_tf": args.spike_tf})
+    coins.sort(key=lambda s: s["spike_vol_ratio"], reverse=True)
+    out({"mode": "testnet" if not args.live else "LIVE", "spike_tf": args.spike_tf, "min_spike": args.min_spike,
+         "ranked_by": "spike_vol_ratio@" + args.spike_tf, "data_source": "binance-mainnet", "n": len(coins),
+         "note": "side/stop/tp are READY — copy them. side=spike color (green=long,red=short); stop=spike candle low/high; tp=1:4.",
          "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": coins})
 
 
@@ -1009,6 +1013,7 @@ def main():
 
     s = sub.add_parser("volspike"); s.add_argument("--tf", default="15m"); s.add_argument("--top", type=int, default=15)
     s.add_argument("--spike-tf", dest="spike_tf", default="1m"); s.add_argument("--spike-lookback", dest="spike_lookback", type=int, default=120)
+    s.add_argument("--min-spike", dest="min_spike", type=float, default=10.0)   # only show spikes >= this (rule #2: 10x)
     s.add_argument("--lookback", type=int, default=250); s.add_argument("--min-vol", dest="min_vol", type=float, default=5e6)
     s.add_argument("--max-scan", dest="max_scan", type=int, default=400); s.set_defaults(fn=cmd_volspike)
 

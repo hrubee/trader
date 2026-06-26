@@ -9,7 +9,7 @@
 ## STRATEGY — VOLUME-SPIKE DIRECTIONAL MOMENTUM (demo, HIGHEST AGGRESSION)
 - PRIMARY (and only) entry trigger = a 1-MINUTE VOLUME SPIKE, traded on the 15m chart. Run
   `volspike --spike-tf 1m --tf 15m` — it scans every liquid USDT-perp for 1m volume spikes. Take coins with
-  **spike_vol_ratio ≥ 5** (latest 1m bar volume ≥ 5× its 20-bar avg). Higher = better.
+  **spike_vol_ratio ≥ 10** (latest 1m bar volume ≥ 5× its 20-bar avg). Higher = better.
 - DIRECTION + bracket = from the 15m context: 15m up/di+ → LONG; 15m down/di- → SHORT.
 - TAKE every qualifying 5×+ directional spike, multiple concurrent (highest-aggression). Do NOT wait for "perfect".
 - SKIP: vol_ratio < 5; a spike bar with no clear direction (doji/tiny body); already-parabolic coins (>25% over ema200 = too late, reverses).
