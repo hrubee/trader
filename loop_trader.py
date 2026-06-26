@@ -477,6 +477,39 @@ def cmd_gainers(args):
          "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps})
 
 
+def cmd_volspike(args):
+    """MARKET-WIDE volume-spike scanner: checks EVERY liquid USDT-perp (not just the top-N), computes each
+    coin's current-bar vol_ratio (volume vs its 20-bar average), and returns the biggest SPIKES ranked
+    desc — your primary hunting ground for 'where did volume just surge across the whole market'. Each row
+    has the full snapshot (price, atr, trend, di, vol_ratio, last5_ohlc) so you can bet the surge bar's
+    direction. min_vol keeps it real (excludes illiquid junk whose 'spikes' are noise on tiny size)."""
+    mkt = market_client()
+    tick = mkt.fetch_tickers()
+    cand = []
+    for sym, t in tick.items():
+        if not sym.endswith(INST_SUFFIX):
+            continue
+        m = mkt.markets.get(sym) or {}
+        if (m.get("info", {}) or {}).get("underlyingType") not in (None, "COIN"):
+            continue
+        qv = float(t.get("quoteVolume") or 0)
+        if qv >= args.min_vol:
+            cand.append((qv, sym.split("/")[0]))
+    cand.sort(reverse=True)
+    bases = [b for _, b in cand[:args.max_scan]]        # whole liquid market (safety-capped)
+    rows = {}
+    with ThreadPoolExecutor(max_workers=24) as ex:
+        for b, k in zip(bases, ex.map(lambda b: klines(mkt, b, args.tf, args.lookback), bases)):
+            if k:
+                rows[b] = k
+    snaps = [snapshot(b, k) for b, k in rows.items()]
+    snaps = [s for s in snaps if s.get("vol_ratio") is not None]
+    snaps.sort(key=lambda s: s["vol_ratio"], reverse=True)
+    out({"mode": "testnet" if not args.live else "LIVE", "tf": args.tf, "ranked_by": "vol_ratio(market-wide surge)",
+         "data_source": "binance-mainnet", "scanned": len(snaps), "n": min(args.top, len(snaps)),
+         "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps[:args.top]})
+
+
 def cmd_price(args):
     mkt = market_client()
     b = args.symbol.upper().replace("/USDT:USDT", "").replace("USDT", "")
@@ -935,6 +968,10 @@ def main():
     s = sub.add_parser("gainers"); s.add_argument("--tf", default="1h"); s.add_argument("--top", type=int, default=20)
     s.add_argument("--lookback", type=int, default=250); s.add_argument("--min-vol", dest="min_vol", type=float, default=1e7)
     s.add_argument("--losers", action="store_true"); s.set_defaults(fn=cmd_gainers)
+
+    s = sub.add_parser("volspike"); s.add_argument("--tf", default="15m"); s.add_argument("--top", type=int, default=15)
+    s.add_argument("--lookback", type=int, default=250); s.add_argument("--min-vol", dest="min_vol", type=float, default=5e6)
+    s.add_argument("--max-scan", dest="max_scan", type=int, default=400); s.set_defaults(fn=cmd_volspike)
 
     s = sub.add_parser("price"); s.add_argument("symbol"); s.add_argument("--tf", default="1h"); s.add_argument("--n", type=int, default=60); s.set_defaults(fn=cmd_price)
 
