@@ -11,7 +11,10 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO" || exit 1
 
 BRAIN_CLI="${BRAIN_CLI:-claude}"                       # agent CLI; override e.g. BRAIN_CLI=hermes
-BRAIN_MODEL="${BRAIN_MODEL:-claude-sonnet-4-6}"        # model flag value (auto-skipped if the CLI has no --model)
+case "$(basename "$BRAIN_CLI")" in                     # model default is per-CLI:
+  hermes*) BRAIN_MODEL="${BRAIN_MODEL-}" ;;            #   hermes -> empty = use its own configured model (e.g. nemotron via NIM)
+  *)       BRAIN_MODEL="${BRAIN_MODEL:-claude-sonnet-4-6}" ;;
+esac
 BRAIN="$REPO/loop_trader_data_brain"
 mkdir -p "$BRAIN"
 LOG="$BRAIN/cron.log"
