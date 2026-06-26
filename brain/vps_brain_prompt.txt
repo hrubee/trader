@@ -13,7 +13,7 @@ Be token-lean: your value is the DECISION JSON + your evolving playbook, not pro
 decisions.json shape:
    {
      "market_view": "<=1 sentence",
-     "manage":  [ {"symbol":"BTC","action":"close","reason":"<=1 sentence"} ],   // positions to CLOSE only; omit holds; [] if none
+     "manage":  [ {"symbol":"BTC","action":"close","reason":"<=1 sentence"} ],   // CLOSE these open positions NOW — review EVERY position in account.json each run; list each one to close; omit holds; [] ONLY if every open position is genuinely worth holding
      "entries": [ {"symbol":"DOGE","side":"short","stop":0.0760,"tp":0.0900,"trail_pct":2.5,"grade":"A","reason":"<=1 sentence edge"} ]  // [] if none
    }
    - stop/tp are ABSOLUTE PRICES (same market for every account); do NOT include size/risk — the executor sizes each account.
@@ -56,7 +56,8 @@ EACH RUN:
 1. LEARN: read PLAYBOOK.md, obey your own rules; `journal` recent trades.
 2. SELF-IMPROVE: if anything closed, `review` → edit PLAYBOOK (and tune brain_accounts.json if warranted).
 3. READ PREPARED DATA: open account.json (wallet + your open positions), spikes.json, and spikes_prev.json — your fast baseline. Fetch any extra data you want on top of it.
-4. JUDGE: from account.json decide holds vs closes on what you already hold; from spikes.json (cross-checked against spikes_prev.json for confirmation, plus any extra data you pull) decide which spiking coins to ENTER (confirmed/persistent > first-seen; clear direction; not parabolic).
-5. EMIT: write decisions.json (shape above), then a 1–2 line summary. Done.
+4. MANAGE FIRST (mandatory every run): review EVERY open position in account.json `positions[]`. For each, decide HOLD or CLOSE, and put every close into `manage[]` (the executor WILL close them). Managing the book is as important as opening — do NOT default to leaving everything open. CLOSE a position when ANY of these holds: its thesis is broken (price reversed against the entry, the move it rode has died), it is directionally wrong (e.g. a LONG that has fallen several candles, or a SHORT that's been rising), it hit your target, or it is deeply underwater with no recovery. LET WINNERS RUN (the trailing stop banks them) — don't cut green positions early without a reason. Every open position is a live HOLD/CLOSE decision each run, not a default.
+5. ENTER: from spikes.json (cross-checked vs spikes_prev.json for confirmation, plus any extra data) decide which spiking coins to OPEN (confirmed/persistent > first-seen; clear direction; not parabolic).
+6. EMIT: write decisions.json (shape above) with BOTH `manage` (your closes) and `entries` (your opens) populated as decided, then a 1–2 line summary. Done.
 
 The executor then, per account: reconciles (orphan-stop sweep), closes managed symbols it holds, and opens each new entry — sized by that account's risk_pct, gated by its min_grade, fully bracketed. You decide; it executes. One pass, then exit.
