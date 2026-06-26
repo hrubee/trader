@@ -541,6 +541,10 @@ def cmd_volspike(args):
         side = "long" if up else "short"
         entry = d["confirm_c"]                           # entry AFTER the confirmation candle closes (~current)
         stop = d["l"] if up else d["h"]                  # rule #3: stop at spike candle low/high
+        # confirmation candle can close past the spike extreme -> stop ends up on the wrong side of entry
+        # (e.g. up-spike but price already fell below the spike low) = setup invalidated; skip such rows
+        if (up and stop >= entry) or ((not up) and stop <= entry):
+            continue
         risk = abs(entry - stop)
         if risk <= 0:
             continue
