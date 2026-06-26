@@ -643,7 +643,9 @@ def cmd_enter(args):
     # Plus a reduce-only TP LIMIT at tp_px. All three are reduce-only + full-qty; Binance auto-cancels the survivors
     # when the position closes (whichever of static/trailing/TP fills first wins). Coexistence verified on Binance.
     exit_side = "sell" if is_long else "buy"
-    cr = max(0.1, min(10.0, round(abs(fill - stop_px) / fill * 100, 1)))   # Binance callbackRate 0.1–10%
+    # trailing callbackRate: use the AI-specified --trail-pct when given, else derive from the stop distance
+    _cr_src = args.trail_pct if getattr(args, "trail_pct", None) else abs(fill - stop_px) / fill * 100
+    cr = max(0.1, min(10.0, round(_cr_src, 1)))   # Binance callbackRate 0.1–10%
     static_oid = None
     try:
         so = ex.create_order(sym, "STOP_MARKET", exit_side, qty, None, {"stopPrice": stop_px, "reduceOnly": True})
@@ -992,6 +994,9 @@ def cmd_execute_decisions(args):
                    "--reason", (e.get("reason") or "brain entry")[:160]]
             if tp not in (None, "", 0):
                 cmd += ["--tp", str(tp)]
+            tpct = e.get("trail_pct") or e.get("trailing_pct")
+            if tpct not in (None, "", 0):
+                cmd += ["--trail-pct", str(tpct)]
             ok, o = run(cmd)
             if ok:
                 held.add(sym)                            # count it + block any duplicate later in this run
@@ -1034,6 +1039,7 @@ def main():
     s.add_argument("--stop", required=True); s.add_argument("--tp", default=None)
     s.add_argument("--risk-pct", type=float, default=1.0); s.add_argument("--leverage", type=int, default=5)
     s.add_argument("--reason", default=""); s.add_argument("--add", action="store_true")
+    s.add_argument("--trail-pct", dest="trail_pct", type=float, default=None, help="trailing-stop callbackRate %% (0.1-10); default derives from the stop distance")
     s.add_argument("--fixed-stop", action="store_true", help="static stop ONLY — skip the trailing stop (default places BOTH a static STOP_MARKET + a native TRAILING_STOP_MARKET)")
     s.add_argument("--dry-run", action="store_true"); s.set_defaults(fn=cmd_enter)
 

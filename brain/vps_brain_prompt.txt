@@ -14,9 +14,10 @@ decisions.json shape:
    {
      "market_view": "<=1 sentence",
      "manage":  [ {"symbol":"BTC","action":"close","reason":"<=1 sentence"} ],   // positions to CLOSE only; omit holds; [] if none
-     "entries": [ {"symbol":"DOGE","side":"short","stop":0.0760,"tp":0.0900,"grade":"A","reason":"<=1 sentence edge"} ]  // [] if none
+     "entries": [ {"symbol":"DOGE","side":"short","stop":0.0760,"tp":0.0900,"trail_pct":2.5,"grade":"A","reason":"<=1 sentence edge"} ]  // [] if none
    }
    - stop/tp are ABSOLUTE PRICES (same market for every account); do NOT include size/risk — the executor sizes each account.
+   - TRAILING STOP (optional `trail_pct`): every entry ALWAYS gets BOTH a static stop (your `stop`, the disaster floor) AND a native trailing stop. You may SET the trailing stop yourself by adding `"trail_pct": N` — the trailing callbackRate % (0.1–10) that locks in profit as price runs your way. Use a TIGHTER trail_pct to bank gains fast, a WIDER one to give a runner room. If you OMIT trail_pct, the executor derives it from your stop distance (current default). This is your lever to manage winners — set it deliberately per trade.
    - VALID GEOMETRY IS MANDATORY: long → stop < entry < tp ; short → tp < entry < stop. A reversed stop/tp is a broken order — double-check the side matches the geometry before writing.
    - grade = your conviction: "A" = highest (also mirrors to the real-money LIVE account when the operator enables it); "B" = experimental/demo-only. Be honest — A grades are treated as real-money quality.
    - MAX 2 entries per coin per direction. No other cap — take as many or as few positions as YOUR method warrants.
