@@ -477,19 +477,29 @@ def cmd_gainers(args):
          "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps})
 
 
-def _spike_info(k, win=60):
-    """Last CLOSED bar: vol-ratio vs the average of the prior `win` bars (default 60 = last 60 min on 1m)
-    + that bar's OHLC. None if not enough bars."""
+def _spike_info(k, win=60, confirm_frac=0.8):
+    """TWO-CANDLE PERSISTENCE filter. The SPIKE candle (vol >> avg of the prior `win` bars) must be
+    CONFIRMED by the NEXT candle holding a close-to-spike volume level: confirm_vol >= confirm_frac *
+    spike_vol. Only confirmed spikes are tradeable (confirm_frac=0 disables the check). Returns the SPIKE
+    candle's OHLC + vr + the confirmation ratio + the confirmation candle's close (the entry reference),
+    or None if not enough bars.
+      indices: len(c)-1 = forming bar ; len(c)-2 = confirmation candle (last CLOSED) ; len(c)-3 = spike candle."""
     if not k:
         return None
     _, o, h, l, c, v = k
-    cb = len(c) - 2
-    if cb < win + 1:
+    confirm = len(c) - 2                 # most recent CLOSED bar = the confirmation candle
+    spike = confirm - 1                  # the bar before it = the spike candle
+    if spike < win + 1:
         return None
-    avg = sum(v[cb - win:cb]) / float(win)
+    avg = sum(v[spike - win:spike]) / float(win)
     if not avg:
         return None
-    return {"vr": v[cb] / avg, "o": float(o[cb]), "h": float(h[cb]), "l": float(l[cb]), "c": float(c[cb])}
+    spike_vol = v[spike]
+    confirm_ratio = (v[confirm] / spike_vol) if spike_vol else 0.0
+    return {"vr": spike_vol / avg, "confirm_ratio": confirm_ratio,
+            "confirmed": (confirm_frac <= 0) or (confirm_ratio >= confirm_frac),
+            "o": float(o[spike]), "h": float(h[spike]), "l": float(l[spike]), "c": float(c[spike]),
+            "confirm_c": float(c[confirm])}
 
 
 def cmd_volspike(args):
@@ -520,8 +530,8 @@ def cmd_volspike(args):
     info = {}
     with ThreadPoolExecutor(max_workers=24) as ex:
         for b, k in zip(bases, ex.map(lambda b: klines(mkt, b, args.spike_tf, args.spike_lookback), bases)):
-            d = _spike_info(k, args.avg_bars)
-            if d is not None and d["vr"] >= args.min_spike:
+            d = _spike_info(k, args.avg_bars, getattr(args, "confirm_frac", 0.8))
+            if d is not None and d["vr"] >= args.min_spike and d["confirmed"]:
                 info[b] = d
     ranked = sorted(info, key=lambda b: info[b]["vr"], reverse=True)[:args.top]
     coins = []
@@ -529,13 +539,14 @@ def cmd_volspike(args):
         d = info[b]
         up = d["c"] >= d["o"]                            # green spike -> long ; red spike -> short
         side = "long" if up else "short"
-        entry = d["c"]                                   # reference entry = spike candle close (~current)
+        entry = d["confirm_c"]                           # entry AFTER the confirmation candle closes (~current)
         stop = d["l"] if up else d["h"]                  # rule #3: stop at spike candle low/high
         risk = abs(entry - stop)
         if risk <= 0:
             continue
         tp = entry + 4 * risk if up else entry - 4 * risk   # rule #4: 1:4 RR
-        coins.append({"coin": b, "spike_vol_ratio": round(d["vr"], 2), "spike_dir": "up" if up else "down",
+        coins.append({"coin": b, "spike_vol_ratio": round(d["vr"], 2),
+                      "confirm_vol_ratio": round(d["confirm_ratio"], 2), "spike_dir": "up" if up else "down",
                       "side": side, "entry_ref": rnd(entry), "stop": rnd(stop), "tp": rnd(tp),
                       "spike_high": rnd(d["h"]), "spike_low": rnd(d["l"]),
                       "rr": "1:4", "spike_tf": args.spike_tf})
@@ -1028,6 +1039,7 @@ def main():
     s.add_argument("--min-spike", dest="min_spike", type=float, default=10.0)   # 10x is the viable band on 15m (backtest)
     s.add_argument("--avg-bars", dest="avg_bars", type=int, default=20)        # baseline = avg of last 20 15m candles (~5h)
     s.add_argument("--lookback", type=int, default=250); s.add_argument("--min-vol", dest="min_vol", type=float, default=5e6)
+    s.add_argument("--confirm-frac", dest="confirm_frac", type=float, default=0.8, help="next candle must hold >= this fraction of the spike-candle volume to confirm (0=off)")
     s.add_argument("--max-scan", dest="max_scan", type=int, default=400); s.set_defaults(fn=cmd_volspike)
 
     s = sub.add_parser("price"); s.add_argument("symbol"); s.add_argument("--tf", default="1h"); s.add_argument("--n", type=int, default=60); s.set_defaults(fn=cmd_price)
