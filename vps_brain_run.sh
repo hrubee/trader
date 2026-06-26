@@ -7,6 +7,9 @@
 # AGENT-AGNOSTIC: the AI CLI + model are env-configurable (BRAIN_CLI / BRAIN_MODEL), so it runs under
 #                 `claude`, `hermes`, or any compatible `-p "<prompt>"` agent.
 set -u
+# cron-safety: cron's minimal PATH (/usr/bin:/bin) misses /usr/local/bin where claude/hermes usually live.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+export HOME="${HOME:-/root}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO" || exit 1
 
