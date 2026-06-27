@@ -18,6 +18,7 @@ import loop_trader as lt
 SPIKE = 7.0; AVG = 20; TP_R = 2.5; PARTIAL = 0.7; TRAIL_R = 5.0
 RISK_PCT = 1.0; LEV = 20; LONG_ONLY = True
 MIN_VOL = 5e6; MAX_SCAN = 60
+FRESH_MIN = 5     # only ENTER within this many minutes of the confirmation 15m close (no chasing stale signals)
 DATADIR = "/root/trader/loop_trader_data_spikeft"
 STATE = DATADIR + "/positions.json"
 LOG = DATADIR + "/ft.log"
@@ -62,6 +63,7 @@ def cap_qty(ex, sym, qty):
 
 def detect(mkt, held):
     sigs = []
+    now = mkt.milliseconds()
     try:
         tick = mkt.fetch_tickers()
     except Exception as e:
@@ -99,11 +101,19 @@ def detect(mkt, held):
                 continue
             if (not up) and not c[cf] < c[sp]:
                 continue
+            entry_ts = int(t[cf]) + 900_000            # confirmation 15m bar CLOSE time (ms)
+            if now - entry_ts > FRESH_MIN * 60_000:     # only act right after the close; don't chase stale signals
+                continue
             k1 = lt.klines(mkt, b, "1m", 60)          # klines requires >=60 bars or returns None
             if not k1:
                 continue
-            _, _, h1, l1, _, _ = k1
-            stop = l1[-2] if up else h1[-2]            # just-closed 1m candle
+            t1, _, h1, l1, _, _ = k1
+            stop = None                                 # the 1m candle that CLOSED at the confirmation close
+            for ii in range(len(t1) - 1, -1, -1):
+                if int(t1[ii]) == entry_ts - 60_000:
+                    stop = (l1[ii] if up else h1[ii]); break
+            if stop is None:
+                stop = l1[-2] if up else h1[-2]         # fallback: latest just-closed 1m
             ref = c[cf]
             rd = (ref - stop) if up else (stop - ref)
             if rd <= 0:
