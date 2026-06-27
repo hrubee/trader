@@ -16,7 +16,7 @@ sys.path.insert(0, "/root/trader")
 import loop_trader as lt
 
 SPIKE = 7.0; AVG = 20; TP_R = 2.5; PARTIAL = 0.7; TRAIL_R = 5.0
-RISK_PCT = 1.0; LEV = 20; LONG_ONLY = True
+RISK_PCT = 1.0; LEV = 20; LONG_ONLY = False   # BOTH directions: green spike -> long, red spike -> short
 MIN_VOL = 5e6; MAX_SCAN = 60
 FRESH_MIN = 5     # only ENTER within this many minutes of the confirmation 15m close (no chasing stale signals)
 DATADIR = "/root/trader/loop_trader_data_spikeft"
