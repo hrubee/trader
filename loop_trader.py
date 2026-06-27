@@ -661,6 +661,15 @@ def _enter_delta(args):
     is_long = args.side == "long"
     if (is_long and stop >= px) or (not is_long and stop <= px):
         die("stop %.8g on wrong side of price %.8g for a %s" % (stop, px, args.side))
+    if not getattr(args, "add", False):
+        try:
+            for _p in ex.fetch_positions([sym], params={"type": "future"}):
+                if abs(float(_p.get("contracts") or 0)) > 0:
+                    die("position already open on %s (delta) — use --add to override" % sym)
+        except SystemExit:
+            raise
+        except Exception:
+            pass
     bal = ex.fetch_balance(params={"type": "future"})
     tot = bal.get("total") or {}
     wallet = float(tot.get("USD") or tot.get("USDT") or 0)
@@ -760,11 +769,11 @@ def _close_delta(args):
     if not pos:
         out({"closed": False, "note": "no open delta position; cancelled %d stray orders" % _cancel_open()}); return
     amount = abs(float(pos.get("contracts")))
-    is_long = pos.get("side") == "long"
+    is_long = pos.get("side") in ("long", "buy")
     entry_px = float(pos.get("entryPrice") or 0); mark = float(pos.get("markPrice") or 0)
     if args.dry_run:
         out({"dry_run": True, "would_close": {"symbol": sym, "side": pos.get("side"), "qty": amount * csz}}); return
-    order = ex.create_market_order(sym, "sell" if is_long else "buy", amount, params={"type": "future", "reduceOnly": True})
+    order = ex.create_market_order(sym, "sell" if is_long else "buy", amount, params={"type": "future", "reduce_only": True})
     exit_px = float(order.get("average") or order.get("price") or mark or entry_px)
     ncxl = _cancel_open()
     coin = amount * csz
