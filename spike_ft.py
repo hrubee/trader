@@ -39,7 +39,10 @@ def load():
 
 
 def save(s):
-    json.dump(s, open(STATE, "w"), indent=2)
+    tmp = STATE + ".tmp"                     # atomic write: never leave a half-written (corrupt) state file
+    with open(tmp, "w") as f:
+        json.dump(s, f, indent=2)
+    os.replace(tmp, STATE)
 
 
 def cap_qty(ex, sym, qty):
@@ -118,8 +121,8 @@ def detect(mkt, held):
             rd = (ref - stop) if up else (stop - ref)
             if rd <= 0:
                 continue
-            sigs.append({"base": b, "sym": b + lt.INST_SUFFIX, "up": up, "ref": ref, "stop": stop,
-                         "vr": round(v[sp] / avg, 1)})
+            sigs.append({"base": b, "sym": b + lt.INST_SUFFIX, "up": bool(up), "ref": float(ref),
+                         "stop": float(stop), "vr": float(round(v[sp] / avg, 1))})   # native types (no numpy -> JSON ok)
         except Exception as e:
             log("scan %s err %r" % (b, e))
     return sigs
