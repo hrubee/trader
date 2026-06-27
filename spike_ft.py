@@ -212,8 +212,13 @@ def manage(ex, st):
 
 def main():
     os.makedirs(DATADIR, exist_ok=True)
+    # Use the DEDICATED 2nd demo account for this forward-test (isolates it from the AI brain's demo wallet).
+    # Swap the DEMO_* keys this process reads to the DEMO2_* pair, staying on the testnet venue/URLs.
+    if os.environ.get("BINANCE_DEMO2_API_KEY") and os.environ.get("BINANCE_DEMO2_API_SECRET"):
+        os.environ["BINANCE_DEMO_API_KEY"] = os.environ["BINANCE_DEMO2_API_KEY"]
+        os.environ["BINANCE_DEMO_API_SECRET"] = os.environ["BINANCE_DEMO2_API_SECRET"]
     mkt = lt.market_client()
-    ex = lt.account_client(False)      # demo/testnet
+    ex = lt.account_client(False)      # demo/testnet (now authenticated as the 2nd demo account)
     st = load()
     manage(ex, st)
     held = set(st.keys())
