@@ -679,7 +679,21 @@ def _enter_delta(args):
     risk_usd = args.risk_pct / 100.0 * wallet
     notional = min(risk_usd / stop_frac, args.leverage * wallet)
     coin_qty = notional / px
-    amount = float(ex.amount_to_precision(sym, coin_qty / csz))   # delta order size is in CONTRACTS
+    # Delta trades WHOLE contracts with a market minimum (often 1). ccxt.amount_to_precision RAISES
+    # InvalidOrder when the raw amount is below that minimum, so check the RAW contracts FIRST: if below the
+    # minimum, floor UP to the minimum -- but ONLY if that minimum position's real risk stays within a hard
+    # cap (2% of wallet); else skip cleanly (never silently over-risk). Otherwise round to precision normally.
+    _min_amt = float(((m.get("limits") or {}).get("amount") or {}).get("min") or 1.0) or 1.0
+    _raw = coin_qty / csz
+    if _raw < _min_amt:
+        _min_risk = _min_amt * csz * abs(px - stop)
+        if _min_risk <= 2.0 / 100.0 * wallet:
+            amount = _min_amt
+        else:
+            die("delta %s: min %g contract(s) risks $%.2f (%.2f%% wallet) > 2%% cap -- skipped (fund wallet or raise risk_pct)" % (
+                sym, _min_amt, _min_risk, _min_risk / wallet * 100))
+    else:
+        amount = float(ex.amount_to_precision(sym, _raw))   # delta order size is in CONTRACTS
     stop_px = float(ex.price_to_precision(sym, stop))
     tp_px = float(ex.price_to_precision(sym, args.tp)) if args.tp else None
     coin = amount * csz
@@ -1226,9 +1240,9 @@ def cmd_execute_decisions(args):
             else:
                 _ex = ccxt.binanceusdm({"options": {"defaultType": "future"}, "enableRateLimit": True})
                 _ex.load_markets()
-                for m in _ex.markets.values():
-                    if m.get("id", "").endswith("USDT:USDT"):
-                        ex_info[m["id"].split("/")[0]] = m
+                for _s, m in _ex.markets.items():
+                    if _s.endswith("/USDT:USDT") and m.get("swap"):
+                        ex_info[_s.split("/")[0]] = m
         except Exception:
             pass
 
