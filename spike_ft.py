@@ -178,8 +178,8 @@ def enter(ex, sig, st):
                            "hwm": fill, "stop_level": sp, "stop_oid": soid, "tp_oid": tpoid,
                            "partial_done": False, "vr": sig["vr"], "ts": lt._ts()}
         save(st)
-        log("ENTER %s long @%g qty=%g stop=%g tp=%g(70%%) rd=%.4g vr=%sx" % (
-            sig["base"], fill, qty, sp, tp, rd, sig["vr"]))
+        log("ENTER %s %s @%g qty=%g stop=%g tp=%g(70%%) rd=%.4g vr=%sx" % (
+            sig["base"], "long" if up else "short", fill, qty, sp, tp, rd, sig["vr"]))
     except Exception as e:
         log("enter %s failed: %r" % (sym, e))
 
