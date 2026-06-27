@@ -1,0 +1,10 @@
+#!/bin/bash
+# Deterministic spike forward-test (Binance DEMO). Isolated from the AI brain.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+export HOME="${HOME:-/root}"
+cd /root/trader || exit 1
+set -a; . ./.env 2>/dev/null; set +a
+exec 9>/tmp/spike_ft.lock
+flock -n 9 || exit 0
+echo "==== $(date -u +%FT%TZ) spike_ft run ====" >> /root/trader/loop_trader_data_spikeft/cron.log
+/root/trader/.venv/bin/python3 /root/trader/spike_ft.py >> /root/trader/loop_trader_data_spikeft/cron.log 2>&1
