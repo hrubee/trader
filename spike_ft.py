@@ -82,7 +82,7 @@ def detect(mkt, held):
     cand.sort(reverse=True)
     for b in [x[1] for x in cand[:MAX_SCAN]]:
         try:
-            k = lt.klines(mkt, b, "15m", AVG + 6)
+            k = lt.klines(mkt, b, "15m", 80)     # klines requires >=60 bars or returns None
             if not k:
                 continue
             t, o, h, l, c, v = k
@@ -99,7 +99,7 @@ def detect(mkt, held):
                 continue
             if (not up) and not c[cf] < c[sp]:
                 continue
-            k1 = lt.klines(mkt, b, "1m", 6)
+            k1 = lt.klines(mkt, b, "1m", 60)          # klines requires >=60 bars or returns None
             if not k1:
                 continue
             _, _, h1, l1, _, _ = k1
