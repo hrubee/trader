@@ -18,3 +18,4 @@ __pycache__/
 /scan_spikes.py
 /update_playbook.py
 /update_playbook_fixed.py
+/PLAYBOOK.md
