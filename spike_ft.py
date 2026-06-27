@@ -225,8 +225,13 @@ def manage(ex, st):
 
 def main():
     os.makedirs(DATADIR, exist_ok=True)
+    import fcntl
+    lk = open("/tmp/spike_ft.botlock", "w")             # serialize EVERY invocation (cron + manual) -> no state races
+    try:
+        fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return
     # Use the DEDICATED 2nd demo account for this forward-test (isolates it from the AI brain's demo wallet).
-    # Swap the DEMO_* keys this process reads to the DEMO2_* pair, staying on the testnet venue/URLs.
     if os.environ.get("BINANCE_DEMO2_API_KEY") and os.environ.get("BINANCE_DEMO2_API_SECRET"):
         os.environ["BINANCE_DEMO_API_KEY"] = os.environ["BINANCE_DEMO2_API_KEY"]
         os.environ["BINANCE_DEMO_API_SECRET"] = os.environ["BINANCE_DEMO2_API_SECRET"]
@@ -234,12 +239,19 @@ def main():
     ex = lt.account_client(False)      # demo/testnet (now authenticated as the 2nd demo account)
     st = load()
     manage(ex, st)
+    st = load()
     held = set(st.keys())
+    try:                               # exchange-aware dedup: never re-enter a coin already open on the account
+        for p in ex.fetch_positions():
+            if abs(float(p.get("contracts") or 0)) > 0:
+                held.add(p["symbol"].split("/")[0])
+    except Exception:
+        pass
     for sig in detect(mkt, held):
-        if sig["base"] in st:
+        if sig["base"] in held:
             continue
         enter(ex, sig, st)
-        st = load()
+        st = load(); held.add(sig["base"])
 
 
 if __name__ == "__main__":
