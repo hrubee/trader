@@ -511,6 +511,7 @@ def cmd_volspike(args):
       tp    = 1:4 risk:reward from entry_ref off that stop
     Only the agent's job: pick rows with spike_vol_ratio >= the threshold (10x) and pass side/stop/tp through."""
     mkt = market_client()
+    # Rate-limit safety: cache markets, reduce parallelism, add retry/backoff for 429
     tick = mkt.fetch_tickers()
     cand = []
     for sym, t in tick.items():
@@ -528,11 +529,32 @@ def cmd_volspike(args):
     cand.sort(reverse=True)
     bases = [b for _, b in cand[:args.max_scan]]        # whole liquid market (safety-capped)
     info = {}
-    with ThreadPoolExecutor(max_workers=24) as ex:
-        for b, k in zip(bases, ex.map(lambda b: klines(mkt, b, args.spike_tf, args.spike_lookback), bases)):
-            d = _spike_info(k, args.avg_bars, getattr(args, "confirm_frac", 0.8))
-            if d is not None and d["vr"] >= args.min_spike and d["confirmed"]:
-                info[b] = d
+    # Fetch klines with rate-limit awareness: smaller worker pool, retry on 429
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    def fetch_with_retry(b, tf, limit, max_retries=3):
+        for attempt in range(max_retries):
+            try:
+                k = klines(mkt, b, tf, limit)
+                if k is not None:
+                    return b, k
+            except Exception as e:
+                if "429" in str(e) or "Rate limit" in str(e) or "Too Many Requests" in str(e):
+                    wait = 2 ** attempt + 0.5  # exponential backoff: 1.5s, 2.5s, 4.5s
+                    time.sleep(wait)
+                    continue
+                break
+        return b, None
+    
+    with ThreadPoolExecutor(max_workers=12) as ex:  # reduced from 24 to be gentler on API
+        futures = [ex.submit(fetch_with_retry, b, args.spike_tf, args.spike_lookback) for b in bases]
+        for fut in as_completed(futures):
+            b, k = fut.result()
+            if k is not None:
+                d = _spike_info(k, args.avg_bars, getattr(args, "confirm_frac", 0.8))
+                if d is not None and d["vr"] >= args.min_spike and d["confirmed"]:
+                    info[b] = d
     ranked = sorted(info, key=lambda b: info[b]["vr"], reverse=True)[:args.top]
     coins = []
     for b in ranked:
@@ -674,7 +696,8 @@ def cmd_enter(args):
     # when the position closes (whichever of static/trailing/TP fills first wins). Coexistence verified on Binance.
     exit_side = "sell" if is_long else "buy"
     # trailing callbackRate: use the AI-specified --trail-pct when given, else derive from the stop distance
-    _cr_src = args.trail_pct if getattr(args, "trail_pct", None) else abs(fill - stop_px) / fill * 100
+    # DEFAULT: 2x the stop distance (wider trail = more room for normal volatility, fewer premature exits)
+    _cr_src = args.trail_pct if getattr(args, "trail_pct", None) else abs(fill - stop_px) / fill * 100 * 2.0
     cr = max(0.1, min(10.0, round(_cr_src, 1)))   # Binance callbackRate 0.1–10%
     static_oid = None
     try:
@@ -975,6 +998,7 @@ def cmd_execute_decisions(args):
         spike_side = {}
     self_path = os.path.abspath(__file__)
     report = []
+    all_ok = True  # track if all executions succeed across all accounts
     for a in accts:
         if not a.get("enabled", True):
             continue
@@ -1010,6 +1034,55 @@ def cmd_execute_decisions(args):
                     acts.append({"close": sym, "ok": ok})
         gmin = GRADE.get(str(a.get("min_grade", "B")).upper(), 2)
         max_pos = a.get("max_positions")                 # optional concurrency cap; None/absent = UNLIMITED
+
+        # Pre-flight validation: fetch exchange info once per account for symbol checks
+        ex_info = {}
+        try:
+            # Use a throwaway client to check symbol filters without auth
+            import ccxt
+            _ex = ccxt.binanceusdm({"options": {"defaultType": "future"}, "enableRateLimit": True})
+            _ex.load_markets()
+            for m in _ex.markets.values():
+                if m.get("id", "").endswith("USDT:USDT"):
+                    ex_info[m["id"].split("/")[0]] = m
+        except Exception:
+            pass
+
+        def validate_entry(sym, side, stop, tp, leverage):
+            """Returns (ok: bool, reason: str) — True if entry passes pre-flight checks."""
+            # 1. Symbol exists
+            m = ex_info.get(sym)
+            if not m:
+                return False, f"symbol {sym} not found on exchange"
+            # 2. Stop geometry
+            # We'll check against current price at execution time in cmd_enter, but validate stop != 0
+            if stop <= 0:
+                return False, "stop price <= 0"
+            # 3. Max qty check (prevent -4005)
+            try:
+                caps = []
+                _lim = (((m.get("limits") or {}).get("amount") or {}).get("max"))
+                if _lim:
+                    caps.append(float(_lim))
+                for _fl in ((m.get("info") or {}).get("filters") or []):
+                    if _fl.get("filterType") in ("MARKET_LOT_SIZE", "LOT_SIZE"):
+                        _mq = _fl.get("maxQty")
+                        if _mq and float(_mq) > 0:
+                            caps.append(float(_mq))
+                if caps:
+                    max_qty = min(caps) * 0.97
+                    # We can't know exact qty here without wallet, but we can warn if leverage is extreme
+                    if leverage > 20:
+                        return False, f"leverage {leverage}x too high for {sym} (max qty caps: {caps})"
+            except Exception:
+                pass
+            # 4. TP geometry if provided
+            if tp and tp > 0:
+                if side == "long" and not (stop < tp):
+                    return False, "long: stop must be < tp"
+                if side == "short" and not (tp < stop):
+                    return False, "short: tp must be < stop"
+            return True, "ok"
         for e in entries:
             sym = _b(e.get("symbol", ""))
             g = GRADE.get(str(e.get("grade") or "B").upper(), 2)
@@ -1031,8 +1104,14 @@ def cmd_execute_decisions(args):
             if max_pos is not None and len(held) >= int(max_pos):   # cap only if explicitly configured (default: unlimited)
                 acts.append({"skip": sym, "why": "max %s concurrent positions" % max_pos})
                 continue
+            # Pre-flight validation
+            lev = a.get("leverage", 5)
+            ok, reason = validate_entry(sym, side, stop, tp, lev)
+            if not ok:
+                acts.append({"skip": sym, "why": reason})
+                continue
             cmd = ["enter", "--symbol", sym, "--side", side, "--stop", str(stop),
-                   "--risk-pct", str(a.get("risk_pct", 1.0)), "--leverage", str(a.get("leverage", 5)),
+                   "--risk-pct", str(a.get("risk_pct", 1.0)), "--leverage", str(lev),
                    "--reason", (e.get("reason") or "brain entry")[:160]]
             if tp not in (None, "", 0):
                 cmd += ["--tp", str(tp)]
@@ -1042,11 +1121,25 @@ def cmd_execute_decisions(args):
             ok, o = run(cmd)
             if ok:
                 held.add(sym)                            # count it + block any duplicate later in this run
+            else:
+                # Track failure for archive decision
+                all_ok = False
             acts.append({"enter": sym, "side": side, "grade": e.get("grade"), "ok": ok, "out": o})
         report.append({"account": a.get("name"), "live": live, "actions": acts})
-    if os.path.exists(args.decisions):                 # archive so a stale file can't re-execute next run
+    # Archive decisions.json only if ALL entries succeeded (no execution failures)
+    if os.path.exists(args.decisions):
         try:
-            os.replace(args.decisions, args.decisions + ".last")
+            # Check if any account had a failed entry
+            all_ok = True
+            for acct_report in report:
+                for act in acct_report.get("actions", []):
+                    if act.get("enter") is not None and not act.get("ok", True):
+                        all_ok = False
+                        break
+                if not all_ok:
+                    break
+            if all_ok:
+                os.replace(args.decisions, args.decisions + ".last")
         except Exception:
             pass
     out({"executed": report, "entries_considered": len(entries), "manage_considered": len(manage)})

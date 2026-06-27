@@ -10,3 +10,11 @@ decisions.json.last
 .venv/
 __pycache__/
 *.pyc
+
+# local backups & per-machine scratch / experiments (not part of the pipeline)
+*.bak-*
+/breakout
+/journal.txt
+/scan_spikes.py
+/update_playbook.py
+/update_playbook_fixed.py

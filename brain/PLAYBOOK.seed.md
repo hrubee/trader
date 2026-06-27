@@ -1,38 +1,58 @@
-# PLAYBOOK — SHARED rulebook (ALL accounts). STRATEGY: MARKET-WIDE VOLUME-SPIKE momentum.
+# PLAYBOOK — your SHARED, self-maintained trading rulebook (ALL accounts)
 
-> You self-evolve this from your OWN net-of-fee outcomes. Read it FIRST, obey it, and after each closed
-> trade update the scoreboard + refine ONE rule. Keep it SHORT. This is the CURRENT strategy — it
-> SUPERSEDES any older archetype (rejection-short / RSL-breakout / mother-son) you may remember; for
-> ENTRIES, the volume spike below is your ONLY trigger. Safety rails (always-bracketed, sizing, no-naked,
-> MAX-2-per-coin) are FIXED in the tool — never weaken them.
+> ONE brain, MANY accounts. You analyze the market ONCE per iteration, then execute on each account by its own
+> risk + selectivity. This playbook is SHARED across every account — market lessons are universal (a setup that
+> is +EV is +EV everywhere; only size and selectivity differ per account). YOU own and evolve this file.
+> READ IT FIRST every iteration and check EVERY candidate trade against it — obey your own rules.
+> After EVERY closed trade (on ANY account), run `review` for that account, judge the NET (after-fee) result,
+> and UPDATE this file: add/refine/prune ONE rule + update the scoreboard. Keep it SHORT and distilled.
+> Ground every rule in NET results — fees ≈ 0.2R per round-trip at current size, so a rule must hold AFTER fees.
+>
+> SAFETY RAILS (always-bracketed static+trailing+TP, sizing caps, no-naked, orphan-sweep) are FIXED in the tool —
+> never write rules that weaken them. You evolve SETUP SELECTION and TRADE MANAGEMENT only.
+> Require a real sample before enshrining a rule (don't over-fit to one trade); consolidate so this stays short.
 
-## STRATEGY — VOLUME-SPIKE DIRECTIONAL MOMENTUM (demo, HIGHEST AGGRESSION)
-- PRIMARY (and only) entry trigger = a 15-MINUTE VOLUME SPIKE, traded on the 15m chart. Run
-  `volspike --spike-tf 15m --tf 15m` — it scans every liquid USDT-perp for 15m volume spikes. Take coins with
-  **spike_vol_ratio ≥ 10** (latest 15m bar volume ≥ 5× its 60-min avg (60 15m candles)). Higher = better.
-- DIRECTION + bracket = from the 15m context: 15m up/di+ → LONG; 15m down/di- → SHORT.
-- TAKE every qualifying 5×+ directional spike, multiple concurrent (highest-aggression). Do NOT wait for "perfect".
-- SKIP: vol_ratio < 5; a spike bar with no clear direction (doji/tiny body); already-parabolic coins (>25% over ema200 = too late, reverses).
+## SETUP ARCHETYPE SCOREBOARD  (net-R per type; update after each close, any account)
 
-## SETUP ARCHETYPE SCOREBOARD  (net-R per type — BUILD THIS from your own volume-spike trades)
-| archetype | trades | avg net-R | verdict |
-|---|---|---|---|
-| volume-spike-long  (5×+ up bar)   | 0 | — | UNTESTED — gather data |
-| volume-spike-short (5×+ down bar) | 0 | — | UNTESTED — gather data |
-(populate from real closed trades; learn which vol_ratio band / trend-alignment / direction actually pays)
+| Archetype | Net record | Verdict |
+|---|---|---|
+| lone-RSL-breakout (STRICT: ADX>40 DI+ BOTH TFs, above all EMAs, complex NOT broadly DI+) | +1.49R avg (5W) | BEST — exploit every strict occurrence; AAVE 06-25 +1.49R net confirms |
+| lone-RSL-breakout (rule-violated: sub-40 ADX or broad complex) | −0.62R avg (4L) | AVOID — HARD GATE confirmed 4×; ADX 38-39 is still a HARD NO (AVAX 38.5 → −0.67R net) |
+| RS-leader-breakout-long re-entry (2nd+ on same coin) | −0.96R avg (11L) | HARD STOP — re-entries on same coin net-negative every time; AAVE 06-25 2nd long journal-trigger auto-fire = −1.24R net; never pre-set journal triggers for same-session re-entries |
+| downtrend-short bounce-rejection (bounce fails AT 1h e9, vol>1.5x) | +1.40R avg (16W/1L) | BEST after lone-RSL — XRP 06-24 is 1st loss (1h ADX 39.7, −0.39R net, 14th trade); 1000PEPE 06-25 rejection-bar +1.72R net (15th win; 1h ADX 32 confirms >30 lower bound works); WLD 06-24 +0.813R net (16th win; confirms archetype pays even on sub-ADX-40 coins if the rejection bar is clean); **the rejection bar (close below 15m e9 on ≥1.5x vol) is the ONLY entry; before it fires, hold; verify dist-to-40lo >2% or R:R collapses. Pre-bounce phase (15m DI-, price drifting at or below e9): wait for 15m DI+ to form first — sub-1x-vol drift at e9 is noise; only after DI+ develops do you watch for the rejection bar. When all majors are DI- both TFs, candidates (DOGE/XRP/ADA/RE at ADX 30-39) can sit in pre-bounce drift for hours — patience is the edge, not anticipation. Relief-bounce standdown: when ≥6/8 majors are simultaneously 15m DI+ in a 1h downtrend (broad relief bounce), RSL longs are blocked (no lone leader) AND bounce-rejection shorts are blocked (NEVER short while 15m DI+) — both archetypes gated at once; emit empty entries and wait for DI+ to fade. Watch-list priority during standdown: 1h ADX ≥30 DI- AND dist-to-40lo >2% (dist gate is non-negotiable — NEAR 06-25: ADX 34.45 but dist 0.055% = zero entry even if rejection bar prints). Relief-bounce 15m DI+ is typically low-ADX (17–22 = choppy drift, not real reversal); entry watch begins only once 15m ADX starts rising DI-. **Maximum standdown signal (confirmed 06-25): when ALL 8 majors simultaneously show 15m ADX 15–22 with DI+, the flat chop typically persists 1–3h before DI- resumes; no setup will qualify during this window — skip routine scans until at least one major's 15m ADX begins rising DI-. The 8/8 DI+ configuration is the widest/flattest relief bounce; do not anticipate resolution. Mature-downtrend exhaustion (confirmed 06-26): even with 1h ADX>40 DI- (e.g. 1000PEPE ADX 41), if ALL qualified DI- candidates show dist-to-40lo <2% simultaneously, the downtrend is at exhaustion lows; the dist gate pre-empts even watching for a rejection bar — stand down until price recovers to re-establish >2% dist or 40lo resets lower. **Flush-bar FOMO trap (confirmed 06-26): a broad market flush (ETH/DOGE/WLD/PEPE 4–7x 15m vol, DI-) while ALL candidates are at exhaustion lows is a trap — prices crash THROUGH the 15m 40lo but the 1h R:R collapses further, not improves; do NOT enter shorts on the flush bar; wait for the 1h 40lo to reset lower or price to recover >2% dist before re-engaging.****** |
+| breakdown-continuation-short (ADX>35, vol≥3x ON break bar, 40lo CLOSE) | −0.40R avg (2W/10L) | HARD SKIP ALL ACCOUNTS — 10L record; PAXG 06-25 confirms 1h vol spike ≠ 15m entry vol; disqualifiers keep stacking |
+| blow-off-top-reversal-short | +0.23R avg (3W/1L) | MARGINAL — skip unless gap >3% AND 1h ADX>50; BEAT 06-24 +0.374R net (3rd win) confirms thin but positive edge; entry discipline (actual shooting-star close required) matters more than direction |
+| bounce-in-downtrend-short (15m DI+) | −0.30R avg (2L) | AVOID — shorting a live 15m bounce bleeds fees |
+| 40lo-breakdown-direct-short (no bounce step) | −0.85R (1L) | AVOID — skipping bounce-exhaustion loses the edge |
+| dead-vol-rollover-short | −0.61R (1L) | HARD SKIP — dead vol flips explosively against you |
+| 1h-breakout-long vol-confirmed (clean fill) | unproven (1L on bad fill) | UNPROVEN — only retest with fill within 0.3% of level |
 
-## SELECTION RULES (volume-spike)
-1. Only trade vol_ratio ≥ 5 (hard floor). The bigger the spike, the stronger the signal.
-2. Bet the spike bar's direction; require a clear directional body (skip dojis/indecision).
-3. Skip parabolic extension (>25% over ema200) — joining late gets reversed.
-4. Whole-market: the spiker can be ANY liquid coin, not just majors — that's the edge of scanning everything.
+## SELECTION RULES  (what to trade / avoid — net-EV only)
 
-## MANAGEMENT RULES
-1. Every entry is bracketed via the FORMULA: LONG → stop = price − 1.5×atr, tp = price + 3×atr ; SHORT → stop = price + 1.5×atr, tp = price − 3×atr. (Correct sides + ~2:1.) NEVER naked.
-2. MAX 2 entries per coin/direction per session.
-3. Let the bracket work — don't micro-exit. Time-stop: if a spike trade hasn't progressed in ~4h and momentum died, cut it.
-4. After a stop, wait for a FRESH spike — no revenge re-entry.
+1. **Lone Relative-Strength-Leader breakout = best archetype, STRICT gates only.** The ONE coin breaking its 1h 40hi while the complex is flat/down. Requires ALL: ADX>40 DI+ on BOTH 1h AND 15m (live, not historical), above all EMAs both TFs, above-avg vol on the breakout CLOSE (wait for the close, don't anticipate). HARD GATE: ADX 38-39 does NOT qualify. Broad-market test: if ≥6/8 majors are 15m DI+, the complex is broadly bullish → no lone leader exists → skip. **Inverse market state (ALL 8 majors DI- on BOTH 1h AND 15m):** no RSL long will surface with ADX>40 both TFs — do not waste scans chasing longs; pivot exclusively to bounce-rejection shorts. Coins that look RSL-like (e.g. +68% over e200) will immediately hit the parabolic-extension gate. **1h-only RSL (confirmed 06-26):** if a coin shows 1h ADX≥40 DI+ but 15m ADX is <20 (collapsed, trend not yet confirmed on 15m), the 1h breakout has NOT filtered to the entry TF — skip; wait for 15m ADX to build above the 35 floor before considering entry.**
+2. **Strong-ADX downtrend short — bounce-rejection only.** Short only when: 1h ADX>30 DI-, full bear stack (price<e9<e50<e200), AND a 15m bar CLOSES back below 15m e9 with vol>1.5x (bounce-to-e9-then-fail). The bounce arriving at e9 on fading/low vol is normal and acceptable — the entry signal is specifically the REJECTION bar (the one that closes back below 15m e9 on >1.5x vol), NOT the drift-up phase. **1000PEPE 06-25: fading-vol stall entry −0.21R net vs same-session rejection-bar entry +1.72R net — waiting 4 hours for the right bar was worth +1.93R.** NEVER short while 15m is DI+. Do NOT enter a direct 40lo breakdown with no bounce step. **Dist-to-40lo gate confirmed live 06-25: 1000PEPE ADX 43 DI- with perfect conditions but dist-to-40lo = 0.5% → zero entry even if rejection bar prints — R:R collapses below fee floor. Always verify >2% before even watching for the signal bar. When the full complex bounces together (15m DI+ on most/all majors in a 1h downtrend), the best downtrend candidates will often be clustered near their 40lo (<2% dist) — if the entire field fails the dist gate, stand down; the downtrend is mature and the relief bounce is market-wide, not individual.**
+3. **Breakdown-continuation-short — strict dual-ADX + vol gate.** Requires BOTH 1h ADX>30 AND 15m ADX>35 (weak drift at 1h ADX<30 has no real momentum — DOGE 06-25: 1h ADX 23 → −0.101R net). Vol≥3x ON the exact 15m bar closing below the 40-low (not a prior bar), confirmed CLOSE (not a wick), 1h below ema50+ema200. Skip if break-bar vol <3x (RE 06-25: 1.37x vol → −0.614R net). A 1h high-vol break followed by a 15m continuation entry does NOT satisfy vol gate — the 15m entry bar itself must show ≥3x (PAXG 06-25: 1h 5.2x → 15m continuation → −0.854R net).
+4. **Dead-vol-rollover-short = HARD SKIP** regardless of how clean it looks.
+5. **No countertrend entries against a 1h "down" tape.** A 15m breakout into a 1h downtrend is low-EV.
+6. **Concentration ban:** don't hold 2+ correlated directional bets at once (two crypto longs = one stacked bet). A genuinely uncorrelated second position (e.g. gold vs crypto, or a real hedge on its own merits) is fine.
+7. **Fast-market skip:** if 3+ majors (BTC/ETH/SOL) all show 4x+ vol on the SAME 15m bar, the scan price is stale by fill time — skip breakdown shorts; re-scan next bar.
+8. **Avoid parabolic extension:** any coin >25% over e200 = no longs (can't time the top) — this trumps even a perfect RSL setup. 1h ATR>5% = sizing impractical, pass. **HEI 06-25: 1h ADX 40.38 DI+, 15m ADX 48.64 DI+ — looked like a perfect RSL setup but +68% over 1h e200 hard-disqualified it. Check e200 distance BEFORE ADX gates.**
+9. **Contaminated TP targets:** if your intended 40lo/40hi TP was already wicked-and-bounced this session, recompute R:R against it; skip if it no longer clears the net minimum.
+10. **R:R MINIMUM ≥ 1.5:1 AFTER ~0.2R fees.** Thin scalps netting <0.2R are fee-bleed, not edge.
+11. **Global low-ADX pre-filter (dead-market skip):** If no coin shows 15m ADX>35 DI+ (RSL floor) AND no 1h downtrend coin shows ADX>30 with dist-to-40lo>2% at an active rejection bar, zero archetypes will fire — emit empty immediately. Signature: 15m ADX 12–26 across all coins, 1h ADX<30 for all majors. Distinct from relief-bounce standdown (which is DI+ everywhere); dead-market is just low-momentum chop in both directions.
+
+## MANAGEMENT RULES  (entries, stops, TP, exits, fees)
+
+1. **Let the bracket work** (static + trailing + TP). Only manually override on a CLEARLY broken thesis (confirmed 1h close back through the level on vol). Don't micro-exit retracements.
+2. **MAX 2 entries per coin/direction per session** — wins AND regime-flips do NOT reset the counter. "First entry since the flip" on a coin you've traded twice is a rationalization — stop. **Never pre-set journal triggers for same-session re-entries on the same symbol** — they fire automatically, bypass the re-entry scoreboard check (6L, HARD STOP), and have been net-negative every single instance.
+3. **Fee floor + post-fill check:** need ≥0.5R gross target (~0.3R net). Immediately after fill, recompute TP/stop distances from the ACTUAL fill; if slippage pushed R:R below ~0.5:1 gross, close rather than hold for a fee-negative scrape.
+4. **Abort/skip if fill drifts >0.3% from the reference price** (both directions). Chasing a breakout (fill above the level) or a flushed short (fill below) destroys R:R and creates an instant paper loss; enter AT the level, not the bar's extreme. Stop must be ≥1x ATR from fill or it's a guaranteed wick-stop.
+5. **Time-stop:** in low-vol chop, if a trade hasn't made ≥0.5R toward TP in ~4h AND ADX is declining, cut it — a long grind going nowhere IS the thesis failing, not patience.
+6. **Re-entry discipline:** after a STOP, wait 4+ 15m bars forming a base above the stop wick. After a TP, only re-enter on a COMPLETED higher-low retest (not 3+ bearish closes = active downtrend).
+7. **TP on every position:** verify after each entry; if the TP order is missing, `set-tp` immediately.
+8. **Demo trailing is cosmetic** (testnet freezes it) — rely on static stop + TP there; live trailing is real.
 
 ## OPEN QUESTIONS / HYPOTHESES
-- Does volume-spike momentum pay NET? Which works better — longs or shorts on the spike? Which vol_ratio band?
-- Does requiring trend-alignment (spike WITH the 1h trend) beat taking every spike? Build the scoreboard to find out.
+- Does 1h-breakout-long (strong ADX, all EMAs, real vol) pay to TP after fees on a CLEAN fill (<0.3% from level)? (1 invalid test so far.)
+- Does breakdown-continuation-short hold on other large-caps with all gates met?
+- Minimum vol ratio that distinguishes a real regime flip from noise?
