@@ -19,3 +19,4 @@ __pycache__/
 /update_playbook.py
 /update_playbook_fixed.py
 /PLAYBOOK.md
+.venv
