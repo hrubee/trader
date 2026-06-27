@@ -86,10 +86,29 @@ def market_client():
     return ex
 
 
-def account_client(live=False):
+def account_client(live=False, exchange="binance"):
     """Authenticated futures client via the PROVEN BinanceExchangeAdapter (same code the live demo bots
     use). testnet (default) routes to Binance Demo Trading (demo-fapi.binance.com via the adapter's
     enable_demo_trading + URL overrides — ccxt deprecated set_sandbox_mode for futures). live is gated."""
+    if exchange == "delta":
+        import ccxt as _ccxt
+        if live:
+            if os.environ.get("LOOP_TRADER_ALLOW_LIVE") != "1":
+                die("refusing --live without env LOOP_TRADER_ALLOW_LIVE=1")
+            key = os.environ.get("DELTA_LIVE_API_KEY", ""); sec = os.environ.get("DELTA_LIVE_API_SECRET", "")
+            url = "https://api.india.delta.exchange"
+        else:
+            key = os.environ.get("DELTA_DEMO_API_KEY", ""); sec = os.environ.get("DELTA_DEMO_API_SECRET", "")
+            url = "https://cdn-ind.testnet.deltaex.org"
+        dex = _ccxt.delta({"apiKey": key, "secret": sec, "enableRateLimit": True})
+        if not live:
+            try: dex.set_sandbox_mode(True)
+            except Exception: pass
+        dex.urls["api"] = {"public": url, "private": url}
+        if not dex.apiKey:
+            die("missing DELTA_%s_API_* keys in .env" % ("LIVE" if live else "DEMO"))
+        dex.load_markets()
+        return dex
     if live:
         if os.environ.get("LOOP_TRADER_ALLOW_LIVE") != "1":
             die("refusing --live without env LOOP_TRADER_ALLOW_LIVE=1 (this toolkit is for the demo account)")
@@ -598,13 +617,13 @@ def cmd_price(args):
 
 
 def cmd_state(args):
-    ex = account_client(args.live)
+    ex = account_client(args.live, getattr(args, "exchange", "binance"))
     try:
         reconcile(ex)        # auto-book any stopped-out/closed trades into the journal before reporting
     except Exception:
         pass
     bal = ex.fetch_balance()
-    u = bal.get(QUOTE, {})
+    u = bal.get(_quote_ccy(getattr(args, "exchange", "binance")), {}) or bal.get("USDT", {}) or bal.get("USD", {})
     poss = []
     for p in ex.fetch_positions():
         if abs(float(p.get("contracts") or 0)) > 0:
@@ -622,7 +641,152 @@ def cmd_state(args):
          "positions": poss, "n_positions": len(poss)})
 
 
+def _quote_ccy(exchange):
+    return "USD" if exchange == "delta" else QUOTE
+
+
+def _enter_delta(args):
+    if args.side not in ("long", "short"):
+        die("side must be long or short")
+    ex = account_client(args.live, "delta")
+    b = args.symbol.upper().replace("/USDT:USDT", "").replace("USDT", "")
+    sym = b + "/USD:USD"
+    try:
+        m = ex.market(sym)
+    except Exception:
+        die("symbol %s not listed on delta" % sym)
+    csz = float(m.get("contractSize") or 1.0) or 1.0
+    px = float(ex.fetch_ticker(sym)["last"])
+    stop = float(args.stop)
+    is_long = args.side == "long"
+    if (is_long and stop >= px) or (not is_long and stop <= px):
+        die("stop %.8g on wrong side of price %.8g for a %s" % (stop, px, args.side))
+    bal = ex.fetch_balance(params={"type": "future"})
+    tot = bal.get("total") or {}
+    wallet = float(tot.get("USD") or tot.get("USDT") or 0)
+    if wallet <= 0:
+        die("delta wallet 0 — cannot size")
+    stop_frac = abs(px - stop) / px
+    risk_usd = args.risk_pct / 100.0 * wallet
+    notional = min(risk_usd / stop_frac, args.leverage * wallet)
+    coin_qty = notional / px
+    amount = float(ex.amount_to_precision(sym, coin_qty / csz))   # delta order size is in CONTRACTS
+    stop_px = float(ex.price_to_precision(sym, stop))
+    tp_px = float(ex.price_to_precision(sym, args.tp)) if args.tp else None
+    coin = amount * csz
+    plan = {"symbol": sym, "exchange": "delta", "side": args.side, "ref_px": rnd(px),
+            "stop": rnd(stop_px), "tp": rnd(tp_px), "qty": rnd(coin), "contracts": amount,
+            "notional": rnd(coin * px), "risk_pct": args.risk_pct, "risk_usd": rnd(risk_usd),
+            "leverage": args.leverage, "wallet": rnd(wallet), "reason": args.reason}
+    if amount <= 0:
+        die("computed contracts 0 (notional %.2f too small) — %s" % (notional, json.dumps(plan)))
+    if args.dry_run:
+        out({"dry_run": True, "would_enter": plan}); return
+    try:
+        ex.set_leverage(args.leverage, sym, params={"type": "future"})
+    except Exception:
+        pass
+    side = "buy" if is_long else "sell"
+    exit_side = "sell" if is_long else "buy"
+    order = ex.create_market_order(sym, side, amount, params={"type": "future"})
+    fill = float(order.get("average") or order.get("price") or px)
+    static_oid = None
+    try:
+        so = ex.create_order(sym, "market", exit_side, amount, None,
+                             {"type": "future", "stop_price": stop_px,
+                              "stop_order_type": "stop_loss_order", "reduce_only": True})
+        static_oid = so.get("id")
+    except Exception as e:
+        try:
+            ex.create_market_order(sym, exit_side, amount, params={"type": "future", "reduceOnly": True})
+        except Exception:
+            pass
+        record("ENTER_ABORT", {**plan, "price": rnd(fill), "extra": "delta static stop failed -> closed: %r" % e})
+        die("DELTA STATIC STOP failed -> position closed (no naked): %r" % e)
+    tp_oid = None
+    if tp_px:
+        try:
+            to = ex.create_order(sym, "market", exit_side, amount, None,
+                                 {"type": "future", "stop_price": tp_px,
+                                  "stop_order_type": "take_profit_order", "reduce_only": True})
+            tp_oid = to.get("id")
+        except Exception:
+            pass
+    res = {**plan, "filled": rnd(fill), "static_oid": static_oid, "trail_oid": None,
+           "trail_callback_pct": None, "stop_type": "static (delta)", "stop_live": bool(static_oid),
+           "tp_oid": tp_oid, "actual_risk_pct": rnd(coin * abs(fill - stop_px) / wallet * 100, 3)}
+    record("ENTER", {"symbol": sym, "side": args.side, "price": rnd(fill), "qty": coin,
+                     "stop": rnd(stop_px), "tp": rnd(tp_px), "reason": args.reason,
+                     "extra": "delta static=%s tp=%s" % (static_oid, tp_oid)})
+    ot = load_open()
+    ot[sym] = {"side": args.side, "entry": rnd(fill), "stop": rnd(stop_px), "qty": coin,
+               "risk_usd": rnd(risk_usd), "reason": args.reason, "ts": _ts(),
+               "oid": static_oid, "static_oid": static_oid, "trail_oid": None,
+               "stop_type": "static (delta)", "tp": rnd(tp_px), "tp_oid": tp_oid}
+    save_open(ot)
+    journal_line("[%s] ENTER(delta) %s %s @%g | $%.0f notl | static %g tp %s (%.2f%%r,%dx) | %s" % (
+        _ts(), b, args.side, fill, coin * fill, stop_px, tp_px, args.risk_pct, args.leverage, args.reason or "(none)"))
+    out({"entered": res})
+
+
+def _close_delta(args):
+    ex = account_client(args.live, "delta")
+    b = args.symbol.upper().replace("/USDT:USDT", "").replace("USDT", "")
+    sym = b + "/USD:USD"
+    try:
+        csz = float(ex.market(sym).get("contractSize") or 1.0) or 1.0
+    except Exception:
+        csz = 1.0
+
+    def _cancel_open():
+        c = 0
+        try:
+            for o in ex.fetch_open_orders(sym, params={"type": "future"}):
+                try:
+                    ex.cancel_order(o["id"], sym, params={"type": "future"}); c += 1
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return c
+
+    pos = None
+    try:
+        for p in ex.fetch_positions([sym], params={"type": "future"}):
+            if abs(float(p.get("contracts") or 0)) > 0:
+                pos = p; break
+    except Exception:
+        pass
+    if not pos:
+        out({"closed": False, "note": "no open delta position; cancelled %d stray orders" % _cancel_open()}); return
+    amount = abs(float(pos.get("contracts")))
+    is_long = pos.get("side") == "long"
+    entry_px = float(pos.get("entryPrice") or 0); mark = float(pos.get("markPrice") or 0)
+    if args.dry_run:
+        out({"dry_run": True, "would_close": {"symbol": sym, "side": pos.get("side"), "qty": amount * csz}}); return
+    order = ex.create_market_order(sym, "sell" if is_long else "buy", amount, params={"type": "future", "reduceOnly": True})
+    exit_px = float(order.get("average") or order.get("price") or mark or entry_px)
+    ncxl = _cancel_open()
+    coin = amount * csz
+    record("CLOSE", {"symbol": sym, "side": pos.get("side"), "qty": coin, "price": rnd(exit_px),
+                     "reason": args.reason, "extra": "delta cancelled %d stops" % ncxl})
+    ot = load_open(); rec = ot.pop(sym, None); save_open(ot)
+    res = {"closed": True, "symbol": sym, "qty": coin, "exit": rnd(exit_px), "stops_cancelled": ncxl}
+    if rec:
+        entry = rec.get("entry") or entry_px; stop = rec.get("stop"); risk = rec.get("risk_usd") or 0
+        diff = (exit_px - entry) if is_long else (entry - exit_px)
+        rdist = abs(entry - stop) if stop else 0
+        R = diff / rdist if rdist else 0.0
+        book_closed(rec, sym, rnd(exit_px), R, diff * coin, args.reason or "manual")
+        res["R"] = round(R, 3); res["pnl"] = round(diff * coin, 3)
+    else:
+        journal_line("[%s] CLOSE(delta) %s @%g | (no recorded entry) | %s" % (_ts(), b, exit_px, args.reason or "manual"))
+    out(res)
+
+
 def cmd_enter(args):
+    if getattr(args, "exchange", "binance") == "delta":
+        return _enter_delta(args)
     if args.side not in ("long", "short"):
         die("side must be long or short")
     mkt = market_client()
@@ -743,6 +907,8 @@ def cmd_enter(args):
 
 
 def cmd_close(args):
+    if getattr(args, "exchange", "binance") == "delta":
+        return _close_delta(args)
     ex = account_client(args.live)
     b = args.symbol.upper().replace("/USDT:USDT", "").replace("USDT", "")
     sym = b + INST_SUFFIX
@@ -1007,7 +1173,8 @@ def cmd_execute_decisions(args):
         live = bool(a.get("live"))
         if live:
             env["LOOP_TRADER_ALLOW_LIVE"] = "1"
-        pre = [sys.executable, self_path] + (["--live"] if live else [])
+        exchange = a.get("exchange", "binance")
+        pre = [sys.executable, self_path] + (["--live"] if live else []) + ["--exchange", exchange]
 
         def run(extra, to=120):
             try:
@@ -1040,11 +1207,19 @@ def cmd_execute_decisions(args):
         try:
             # Use a throwaway client to check symbol filters without auth
             import ccxt
-            _ex = ccxt.binanceusdm({"options": {"defaultType": "future"}, "enableRateLimit": True})
-            _ex.load_markets()
-            for m in _ex.markets.values():
-                if m.get("id", "").endswith("USDT:USDT"):
-                    ex_info[m["id"].split("/")[0]] = m
+            if exchange == "delta":
+                _ex = ccxt.delta({"enableRateLimit": True})
+                _ex.urls["api"] = {"public": "https://api.india.delta.exchange", "private": "https://api.india.delta.exchange"}
+                _ex.load_markets()
+                for _s, m in _ex.markets.items():
+                    if m.get("swap") and m.get("active"):
+                        ex_info[_s.split("/")[0]] = m
+            else:
+                _ex = ccxt.binanceusdm({"options": {"defaultType": "future"}, "enableRateLimit": True})
+                _ex.load_markets()
+                for m in _ex.markets.values():
+                    if m.get("id", "").endswith("USDT:USDT"):
+                        ex_info[m["id"].split("/")[0]] = m
         except Exception:
             pass
 
@@ -1149,6 +1324,7 @@ def main():
     load_env()
     ap = argparse.ArgumentParser(description="loop_trader — Binance testnet trading infra for the /loop agent")
     ap.add_argument("--live", action="store_true", help="use LIVE account (gated by LOOP_TRADER_ALLOW_LIVE=1)")
+    ap.add_argument("--exchange", default="binance", help="account exchange: binance (default) | delta")
     sub = ap.add_subparsers(dest="cmd")
 
     s = sub.add_parser("scan"); s.add_argument("--tf", default="1h"); s.add_argument("--top", type=int, default=30)
