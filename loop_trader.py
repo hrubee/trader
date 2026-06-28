@@ -728,6 +728,10 @@ def _enter_delta(args):
     exit_side = "sell" if is_long else "buy"
     order = ex.create_market_order(sym, side, amount, params={"type": "future"})
     fill = float(order.get("average") or order.get("price") or px)
+    # COMPULSORY 1:4 RR: TP is ALWAYS exactly 4x the stop distance from the ACTUAL fill (overrides any passed tp).
+    _rr_risk = abs(fill - stop_px)
+    tp_px = float(ex.price_to_precision(sym, (fill + 4 * _rr_risk) if is_long else (fill - 4 * _rr_risk))) if _rr_risk else tp_px
+    plan["tp"] = rnd(tp_px)
     static_oid = None
     try:
         so = ex.create_order(sym, "market", exit_side, amount, None,
@@ -890,6 +894,10 @@ def cmd_enter(args):
     side = "buy" if is_long else "sell"
     order = ex.create_order(sym, "market", side, qty)
     fill = float(order.get("average") or order.get("price") or px)
+    # COMPULSORY 1:4 RR: TP is ALWAYS exactly 4x the stop distance from the ACTUAL fill (overrides any passed tp).
+    _rr_risk = abs(fill - stop_px)
+    tp_px = float(ex.price_to_precision(sym, (fill + 4 * _rr_risk) if is_long else (fill - 4 * _rr_risk))) if _rr_risk else tp_px
+    plan["tp"] = rnd(tp_px)
     # Protective stops — EVERY trade gets BOTH (operator: "static SL + trailing SL at every trade"):
     #   1. STATIC STOP_MARKET at stop_px — the immutable disaster floor. MANDATORY: if it fails -> close + abort (never naked).
     #   2. native TRAILING_STOP_MARKET (callbackRate = the stop distance %) — locks profit as the trade runs.
