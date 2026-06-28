@@ -92,4 +92,6 @@ if [ -s "$DEC" ]; then                                 # PHASE 2: deterministic,
 else
   echo "---- $(date -u +%FT%TZ) no decisions.json emitted — nothing to execute ----" >> "$LOG"
 fi
+# Telegram trade alerts: entry chart + threaded exit reply (reads demo ledger, new events only)
+TG_ALERT_DATADIR="$REPO/loop_trader_data" "$PY" "$REPO/tg_alerter.py" >> "$LOG" 2>&1 || true
 echo "==== $(date -u +%FT%TZ) BRAIN iteration END (exit $rc) ====" >> "$LOG"
