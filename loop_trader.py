@@ -518,7 +518,7 @@ def _spike_info(k, win=60, confirm_frac=0.8):
     return {"vr": spike_vol / avg, "confirm_ratio": confirm_ratio,
             "confirmed": (confirm_frac <= 0) or (confirm_ratio >= confirm_frac),
             "o": float(o[spike]), "h": float(h[spike]), "l": float(l[spike]), "c": float(c[spike]),
-            "confirm_c": float(c[confirm])}
+            "confirm_c": float(c[confirm]), "confirm_o": float(o[confirm])}
 
 
 def cmd_volspike(args):
@@ -579,6 +579,10 @@ def cmd_volspike(args):
     for b in ranked:
         d = info[b]
         up = d["c"] >= d["o"]                            # green spike -> long ; red spike -> short
+        # SAME-DIRECTION CONFIRMATION (operator rule): the confirmation candle must close the SAME way as the
+        # spike candle (both green or both red). A high-volume REVERSAL bar is not follow-through -> skip it.
+        if up != (d["confirm_c"] >= d["confirm_o"]):
+            continue
         side = "long" if up else "short"
         entry = d["confirm_c"]                           # entry AFTER the confirmation candle closes (~current)
         stop = d["l"] if up else d["h"]                  # rule #3: stop at spike candle low/high
