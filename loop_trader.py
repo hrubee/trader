@@ -496,7 +496,7 @@ def cmd_gainers(args):
          "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": snaps})
 
 
-def _spike_info(k, win=60, confirm_frac=0.8):
+def _spike_info(k, win=60, confirm_frac=0.8, min_spike=0.0):
     """TWO-CANDLE PERSISTENCE filter. The SPIKE candle (vol >> avg of the prior `win` bars) must be
     CONFIRMED by the NEXT candle holding a close-to-spike volume level: confirm_vol >= confirm_frac *
     spike_vol. Only confirmed spikes are tradeable (confirm_frac=0 disables the check). Returns the SPIKE
@@ -506,19 +506,30 @@ def _spike_info(k, win=60, confirm_frac=0.8):
     if not k:
         return None
     _, o, h, l, c, v = k
-    confirm = len(c) - 2                 # most recent CLOSED bar = the confirmation candle
-    spike = confirm - 1                  # the bar before it = the spike candle
-    if spike < win + 1:
-        return None
-    avg = sum(v[spike - win:spike]) / float(win)
-    if not avg:
-        return None
-    spike_vol = v[spike]
-    confirm_ratio = (v[confirm] / spike_vol) if spike_vol else 0.0
-    return {"vr": spike_vol / avg, "confirm_ratio": confirm_ratio,
-            "confirmed": (confirm_frac <= 0) or (confirm_ratio >= confirm_frac),
-            "o": float(o[spike]), "h": float(h[spike]), "l": float(l[spike]), "c": float(c[spike]),
-            "confirm_c": float(c[confirm]), "confirm_o": float(o[confirm])}
+    confirm = len(c) - 2                 # most recent CLOSED bar = the CONFIRMING candle (entry trigger)
+    # CONFIRMATION WINDOW: the spike may be confirmed by the 2nd candle (immediate next, gap=1) OR the 3rd
+    # candle (gap=2 -> the 2nd candle did NOT cross above the spike, but the 3rd does). The confirming candle
+    # is always the most recent CLOSED bar; the spike sits 1 or 2 bars before it. Prefer the 2nd-candle
+    # confirmation; fall back to the 3rd. A spike is valid when vr >= min_spike AND the confirming candle's
+    # volume crossed it (confirm_ratio >= confirm_frac). Same-direction is enforced by the caller.
+    for gap in (1, 2):
+        spike = confirm - gap
+        if spike < win + 1:
+            continue
+        avg = sum(v[spike - win:spike]) / float(win)
+        if not avg:
+            continue
+        spike_vol = v[spike]
+        if not spike_vol:
+            continue
+        vr = spike_vol / avg
+        confirm_ratio = v[confirm] / spike_vol
+        confirmed = (confirm_frac <= 0) or (confirm_ratio >= confirm_frac)
+        if vr >= min_spike and confirmed:
+            return {"vr": vr, "confirm_ratio": confirm_ratio, "confirmed": confirmed, "confirm_gap": gap,
+                    "o": float(o[spike]), "h": float(h[spike]), "l": float(l[spike]), "c": float(c[spike]),
+                    "confirm_c": float(c[confirm]), "confirm_o": float(o[confirm])}
+    return None
 
 
 def cmd_volspike(args):
@@ -571,7 +582,7 @@ def cmd_volspike(args):
         for fut in as_completed(futures):
             b, k = fut.result()
             if k is not None:
-                d = _spike_info(k, args.avg_bars, getattr(args, "confirm_frac", 0.8))
+                d = _spike_info(k, args.avg_bars, getattr(args, "confirm_frac", 0.8), args.min_spike)
                 if d is not None and d["vr"] >= args.min_spike and d["confirmed"]:
                     info[b] = d
     ranked = sorted(info, key=lambda b: info[b]["vr"], reverse=True)[:args.top]
@@ -598,7 +609,7 @@ def cmd_volspike(args):
                       "confirm_vol_ratio": round(d["confirm_ratio"], 2), "spike_dir": "up" if up else "down",
                       "side": side, "entry_ref": rnd(entry), "stop": rnd(stop), "tp": rnd(tp),
                       "spike_high": rnd(d["h"]), "spike_low": rnd(d["l"]),
-                      "rr": "1:4", "spike_tf": args.spike_tf})
+                      "rr": "1:4", "spike_tf": args.spike_tf, "confirm_candle": d.get("confirm_gap", 1) + 1})
     coins.sort(key=lambda s: s["spike_vol_ratio"], reverse=True)
     out({"mode": "testnet" if not args.live else "LIVE", "spike_tf": args.spike_tf, "min_spike": args.min_spike,
          "ranked_by": "spike_vol_ratio@" + args.spike_tf, "data_source": "binance-mainnet", "n": len(coins),
