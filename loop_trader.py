@@ -1216,12 +1216,13 @@ def cmd_execute_decisions(args):
                 ot = {}
         held = {_b(k) for k in ot.keys()}
         acts = []
+        # AI-INITIATED CLOSES ARE DISABLED (operator policy): positions exit ONLY via their protective
+        # brackets (static stop / trailing stop / TP) -- never via the brain's manage[]. This stops the AI
+        # from cutting winners early. The requested closes are recorded for visibility but NOT executed.
         for m in manage:
             if m.get("action") == "close":
                 sym = _b(m.get("symbol", ""))
-                if sym and sym in held:
-                    ok, o = run(["close", "--symbol", sym, "--reason", (m.get("reason") or "brain close")[:160]], to=90)
-                    acts.append({"close": sym, "ok": ok})
+                acts.append({"close_ignored": sym, "why": "AI closes disabled (operator policy) -- bracket-only exits"})
         gmin = GRADE.get(str(a.get("min_grade", "B")).upper(), 2)
         max_pos = a.get("max_positions")                 # optional concurrency cap; None/absent = UNLIMITED
 
