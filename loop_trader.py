@@ -528,7 +528,7 @@ def _spike_info(k, win=60, confirm_frac=0.8, min_spike=0.0):
         if vr >= min_spike and confirmed:
             return {"vr": vr, "confirm_ratio": confirm_ratio, "confirmed": confirmed, "confirm_gap": gap,
                     "o": float(o[spike]), "h": float(h[spike]), "l": float(l[spike]), "c": float(c[spike]),
-                    "confirm_c": float(c[confirm]), "confirm_o": float(o[confirm])}
+                    "confirm_c": float(c[confirm]), "confirm_o": float(o[confirm]), "next_l": float(l[spike + 1]), "next_h": float(h[spike + 1])}
     return None
 
 
@@ -596,7 +596,7 @@ def cmd_volspike(args):
             continue
         side = "long" if up else "short"
         entry = d["confirm_c"]                           # entry AFTER the confirmation candle closes (~current)
-        stop = d["l"] if up else d["h"]                  # rule #3: stop at spike candle low/high
+        stop = d["next_l"] if up else d["next_h"]        # SL at the candle AFTER the spike: low (long) / high (short)
         # confirmation candle can close past the spike extreme -> stop ends up on the wrong side of entry
         # (e.g. up-spike but price already fell below the spike low) = setup invalidated; skip such rows
         if (up and stop >= entry) or ((not up) and stop <= entry):
@@ -613,7 +613,7 @@ def cmd_volspike(args):
     coins.sort(key=lambda s: s["spike_vol_ratio"], reverse=True)
     out({"mode": "testnet" if not args.live else "LIVE", "spike_tf": args.spike_tf, "min_spike": args.min_spike,
          "ranked_by": "spike_vol_ratio@" + args.spike_tf, "data_source": "binance-mainnet", "n": len(coins),
-         "note": "side/stop/tp are READY — copy them. side=spike color (green=long,red=short); stop=spike candle low/high; tp=1:4.",
+         "note": "side/stop/tp are READY — copy them. side=spike color (green=long,red=short); stop=candle-after-spike low/high; tp=1:4.",
          "ts": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "coins": coins})
 
 
