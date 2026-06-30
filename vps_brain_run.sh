@@ -62,7 +62,7 @@ fi
 
 # (b) VOLUME-SPIKE CANDIDATE LIST (prior run's list kept for cross-iteration confirmation).
 [ -f "$SPIKES" ] && cp -f "$SPIKES" "$SPIKES_PREV"
-if vs_out="$(LOOP_TRADER_DATADIR="$REPO/loop_trader_data" timeout 180 "$PY" "$REPO/loop_trader.py" volspike --spike-tf 15m --top 20 --min-spike 5 --confirm-frac 0.9 --min-vol 5e5 --max-scan 600 2>>"$LOG")" && [ -n "$vs_out" ]; then
+if vs_out="$(LOOP_TRADER_DATADIR="$REPO/loop_trader_data" timeout 180 "$PY" "$REPO/loop_trader.py" volspike --spike-tf 15m --top 20 --min-spike 5 --confirm-frac 0.9 --min-vol 5e6 --max-scan 400 2>>"$LOG")" && [ -n "$vs_out" ]; then
   printf '%s\n' "$vs_out" > "$SPIKES"
   echo "$(date -u +%FT%TZ) volspike list computed ($(printf '%s' "$vs_out" | grep -o '\"n\":[0-9]*' | head -1))" >> "$LOG"
 else

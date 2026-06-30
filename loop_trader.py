@@ -420,6 +420,12 @@ def reconcile(ex):
         pnl = realized_pnl_since(ex, sym, rec.get("ts", ""))
         if pnl is None:                      # income unavailable -> assume the stop fired (designed -1R)
             pnl = -risk; R = -1.0; xr = "presumed-stop"
+        elif risk and abs(pnl) > 20 * risk:  # GLITCH GUARD: a 1%-risk trade cannot realize >20R. A larger
+            # |pnl| is an exchange glitch (thin-book fill, e.g. TAIKO testnet wick that booked -$11.2M). Do
+            # NOT book the garbage -- it corrupts the ledger + wallet tracking. Cap to the designed -1R + flag.
+            journal_line("[%s] GLITCH-GUARD %s: exchange realized PnL %.2f absurd (>20R vs risk %.2f) -- booked as -1R (thin-book/glitch fill, NOT real)" % (
+                _ts(), sym.split("/")[0], pnl, risk))
+            pnl = -risk; R = -1.0; xr = "glitch-capped-1R"
         else:
             R = (pnl / risk) if risk else 0.0; xr = "stop/external"
         book_closed(rec, sym, None, R, pnl, xr)
